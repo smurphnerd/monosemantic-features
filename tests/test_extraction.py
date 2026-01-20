@@ -3,6 +3,7 @@ import torch
 from src.config import SyntheticConfig, ExtractionConfig, compute_coef_min
 from src.extraction import compute_tau_bounds, resolve_tau, find_neighbors, cluster_by_neighbors
 from src.extraction import compute_nullspace
+from src.extraction import extract_feature
 
 
 def test_compute_tau_bounds_orthogonal():
@@ -136,3 +137,39 @@ def test_compute_nullspace_contains_shared_direction():
     # Project f1 onto nullspace - should have high component
     projection = nullspace @ f1
     assert projection.norm() > 0.9  # f1 should be mostly in nullspace
+
+
+def test_extract_feature_recovers_shared_direction():
+    """Extract feature should recover the direction shared by neighbors."""
+    # Create representations where neighbors share feature f1
+    f1 = torch.tensor([1.0, 0.0, 0.0, 0.0])
+    f2 = torch.tensor([0.0, 1.0, 0.0, 0.0])
+    f3 = torch.tensor([0.0, 0.0, 1.0, 0.0])
+
+    representations = torch.stack([
+        f1,  # 0: neighbor
+        f1,  # 1: neighbor
+        f2,  # 2: non-neighbor
+        f3,  # 3: non-neighbor
+    ])
+
+    neighbor_indices = torch.tensor([0, 1])
+
+    nullspace = compute_nullspace(representations, neighbor_indices, epsilon=0.0)
+    extracted = extract_feature(representations, neighbor_indices, nullspace)
+
+    # Extracted feature should align with f1
+    alignment = torch.abs(extracted @ f1)
+    assert alignment > 0.99
+
+
+def test_extract_feature_unit_norm():
+    """Extracted feature should have unit norm."""
+    representations = torch.randn(10, 8)
+    representations = representations / representations.norm(dim=1, keepdim=True)
+    neighbor_indices = torch.tensor([0, 1, 2])
+
+    nullspace = compute_nullspace(representations, neighbor_indices, epsilon=0.0)
+    if nullspace.shape[0] > 0:  # Only if nullspace is non-trivial
+        extracted = extract_feature(representations, neighbor_indices, nullspace)
+        assert torch.isclose(extracted.norm(), torch.tensor(1.0), atol=1e-6)

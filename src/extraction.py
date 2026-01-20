@@ -195,3 +195,42 @@ def compute_nullspace(
     nullspace_basis = Vh[nullspace_mask]  # (k, d)
 
     return nullspace_basis
+
+
+def extract_feature(
+    representations: torch.Tensor,
+    neighbor_indices: torch.Tensor,
+    nullspace: torch.Tensor
+) -> torch.Tensor:
+    """
+    Extract feature by projecting neighbors onto nullspace and finding dominant direction.
+
+    Args:
+        representations: (num_repr, d) tensor
+        neighbor_indices: 1D tensor of neighbor indices
+        nullspace: (k, d) tensor of nullspace basis vectors
+
+    Returns:
+        (d,) unit-norm feature vector
+    """
+    if nullspace.shape[0] == 0:
+        raise ValueError("Nullspace is empty, cannot extract feature")
+
+    # Get neighbor representations
+    neighbors = representations[neighbor_indices]  # (m, d)
+
+    # Average the neighbors
+    avg_neighbor = neighbors.mean(dim=0)  # (d,)
+
+    # Project onto nullspace: project = nullspace.T @ nullspace @ avg_neighbor
+    # But we want the component in the nullspace
+    projection = nullspace.T @ (nullspace @ avg_neighbor)  # (d,)
+
+    # Normalize to unit vector
+    norm = projection.norm()
+    if norm < 1e-8:
+        raise ValueError("Projection onto nullspace has zero norm")
+
+    feature = projection / norm
+
+    return feature
