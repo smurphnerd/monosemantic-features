@@ -1,7 +1,7 @@
 import pytest
 import torch
 from src.config import SyntheticConfig, ExtractionConfig, compute_coef_min
-from src.extraction import compute_tau_bounds, resolve_tau, find_neighbors
+from src.extraction import compute_tau_bounds, resolve_tau, find_neighbors, cluster_by_neighbors
 
 
 def test_compute_tau_bounds_orthogonal():
@@ -67,3 +67,33 @@ def test_find_neighbors_similar():
     assert 0 in neighbors
     assert 1 in neighbors
     assert 2 not in neighbors
+
+
+def test_cluster_by_neighbors_distinct_features():
+    """Representations with same dominant feature should cluster together."""
+    # Create representations: 3 dominated by f1, 2 dominated by f2
+    f1 = torch.tensor([1.0, 0.0, 0.0, 0.0])
+    f2 = torch.tensor([0.0, 1.0, 0.0, 0.0])
+
+    representations = torch.stack([
+        f1 + 0.1 * torch.randn(4),  # 0: dominated by f1
+        f1 + 0.1 * torch.randn(4),  # 1: dominated by f1
+        f1 + 0.1 * torch.randn(4),  # 2: dominated by f1
+        f2 + 0.1 * torch.randn(4),  # 3: dominated by f2
+        f2 + 0.1 * torch.randn(4),  # 4: dominated by f2
+    ])
+    representations = representations / representations.norm(dim=1, keepdim=True)
+
+    clusters = cluster_by_neighbors(representations, tau=0.8)
+
+    # Should have 2 clusters
+    assert len(clusters) == 2
+
+
+def test_cluster_by_neighbors_returns_dict():
+    representations = torch.eye(3)
+    clusters = cluster_by_neighbors(representations, tau=0.5)
+
+    # Each orthogonal vector forms its own cluster
+    assert isinstance(clusters, dict)
+    assert len(clusters) == 3

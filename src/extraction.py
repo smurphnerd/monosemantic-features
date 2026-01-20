@@ -111,3 +111,34 @@ def find_neighbors(
     neighbor_indices = torch.where(neighbor_mask)[0]
 
     return neighbor_indices
+
+
+def cluster_by_neighbors(
+    representations: torch.Tensor,
+    tau: float
+) -> dict[frozenset[int], list[int]]:
+    """
+    Group representation indices by their neighbor sets.
+
+    Representations with identical neighbor sets are assumed to share
+    the same dominant feature.
+
+    Args:
+        representations: (num_repr, d) tensor
+        tau: Cosine similarity threshold for neighbors
+
+    Returns:
+        Dictionary mapping neighbor_set (frozenset) to list of representation indices
+    """
+    num_repr = representations.shape[0]
+    clusters: dict[frozenset[int], list[int]] = {}
+
+    for i in range(num_repr):
+        neighbor_indices = find_neighbors(representations, i, tau)
+        neighbor_set = frozenset(neighbor_indices.tolist())
+
+        if neighbor_set not in clusters:
+            clusters[neighbor_set] = []
+        clusters[neighbor_set].append(i)
+
+    return clusters
