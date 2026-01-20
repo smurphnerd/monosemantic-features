@@ -1,7 +1,7 @@
 import pytest
 import torch
 from src.config import SyntheticConfig, ExtractionConfig, compute_coef_min
-from src.extraction import compute_tau_bounds, resolve_tau
+from src.extraction import compute_tau_bounds, resolve_tau, find_neighbors
 
 
 def test_compute_tau_bounds_orthogonal():
@@ -36,3 +36,34 @@ def test_resolve_tau_manual():
     tau = resolve_tau(extraction, synthetic)
 
     assert tau == 0.7
+
+
+def test_find_neighbors_includes_self():
+    """A representation should always be its own neighbor."""
+    representations = torch.eye(4)  # 4 orthogonal unit vectors
+    neighbors = find_neighbors(representations, target_idx=0, tau=0.5)
+    assert 0 in neighbors
+
+
+def test_find_neighbors_orthogonal():
+    """Orthogonal representations shouldn't be neighbors (except self)."""
+    representations = torch.eye(4)
+    neighbors = find_neighbors(representations, target_idx=0, tau=0.5)
+    assert len(neighbors) == 1
+    assert neighbors[0] == 0
+
+
+def test_find_neighbors_similar():
+    """Similar representations should be neighbors."""
+    representations = torch.tensor([
+        [1.0, 0.0, 0.0],
+        [0.9, 0.1, 0.0],  # Similar to first
+        [0.0, 1.0, 0.0],  # Orthogonal to first
+    ])
+    # Normalize
+    representations = representations / representations.norm(dim=1, keepdim=True)
+
+    neighbors = find_neighbors(representations, target_idx=0, tau=0.8)
+    assert 0 in neighbors
+    assert 1 in neighbors
+    assert 2 not in neighbors

@@ -79,3 +79,35 @@ def resolve_tau(
     tau = tau_max + margin * (tau_min - tau_max)
 
     return tau
+
+
+def find_neighbors(
+    representations: torch.Tensor,
+    target_idx: int,
+    tau: float
+) -> torch.Tensor:
+    """
+    Find indices of representations with cosine similarity >= tau to target.
+
+    Args:
+        representations: (num_repr, d) tensor
+        target_idx: Index of target representation
+        tau: Cosine similarity threshold
+
+    Returns:
+        1D tensor of neighbor indices (always includes target_idx)
+    """
+    target = representations[target_idx]
+
+    # Compute cosine similarities
+    norms = torch.norm(representations, dim=1)
+    target_norm = norms[target_idx]
+
+    dots = representations @ target
+    cosine_sims = dots / (norms * target_norm + 1e-8)
+
+    # Find neighbors (cosine sim >= tau)
+    neighbor_mask = cosine_sims >= tau
+    neighbor_indices = torch.where(neighbor_mask)[0]
+
+    return neighbor_indices
