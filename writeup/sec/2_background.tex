@@ -1,0 +1,47 @@
+\section{Background}
+\label{sec:background}
+
+This section will describe three key hypotheses in the field of mechanistic interpretability.
+For my methodology in the following sections, I will assume that these hypotheses are true.
+I first came across these ideas from Anthropic~\cite{elhage2022superposition}.
+
+\subsection{The Linear Representation Hypothesis}
+
+Taking any representation $\mathbf{r} \in \mathbb{R}^d$ from a transformer model, the linear representation hypothesis (LRH) states that:
+\begin{equation}
+	\mathbf{r} = \sum_k c_k \mathbf{f}_k
+\end{equation}
+where $\mathbf{f} \in \mathbb{R}^d$ represents a unit-norm `feature' vector, $c$ is a weighting coefficient, and $k$ is the number of fundamental features that the model is capable of representing.
+
+Going back to our example from \Cref{sec:intro}, the thought ``I love my girlfriend'' would be the vector direction $\mathbf{r}$, while the fundamental concepts $\mathbf{f}$ that make up this thought such as ``love'' would have non-zero coefficients $c$.
+If I REALLY loved my girlfriend, then the coefficient $c_{love}$ for $\mathbf{f}_{love}$ would be larger.
+If $c_{love}=0$, then the representation would no longer have any notion of ``love'' and the representation would simply reduce to ``my girlfriend''.
+If $c_{love}<0$, then the direction for $\mathbf{f}_{love}$ would be flipped, potentially changing the representation to represent ``I hate my girlfriend''.
+
+An alternative way to write this decomposition of $\mathbf{r}$ which I will be using is:
+\begin{equation}
+	\mathbf{r} = \mathbf{F} \mathbf{c}
+\end{equation}
+where $\mathbf{F} \in \mathbb{R}^{d \times k}$ is the ``feature basis'' containing the $k$ fundamental features and $\mathbf{c} \in \mathbb{R}^k$ is a vector of coefficients.
+
+\subsection{The Superposition Hypothesis}
+
+For a given representation in $\mathbb{R}^d$, a purely orthogonal feature basis would be able to fit at most $d$ features.
+However, as per the Johnson-Lindenstrauss lemma, it is possible to have a basis of $\text{exp}(d)$ ``$\epsilon$-orthogonal'' vectors in $\mathbb{R}^d$ such that the cosine similarity between any two vectors is $< \epsilon$.
+As transformers operate in the thousands of dimensions, this exponential scaling likely allows them to represent an arbitrarily large number of features; that is $k \gg d$.
+
+\subsection{The Sparsity Assumption}
+
+For the superposition hypothesis to work in practice, the coefficient vector $\mathbf{c}$ must be sparse.
+In other words, a given representation $\mathbf{r}$ should only have a small number of features active at any given time, that is $\|\mathbf{c}\|_0 \ll k$.
+
+To illustrate this why this must be true with $\epsilon$-orthogonal bases, let's consider the task of feature extracting neuron that fires if $\mathbf{f}_i$ is present in representation $\mathbf{r}$.
+In the simplest case the weights of this neuron $\mathbf{w}$ would simply be $\mathbf{f}_i$ such that when $\mathbf{r}$ is multiplied with it, we get
+
+\begin{equation}
+	\mathbf{w}^T \mathbf{r} = \underbrace{c_i \mathbf{f}_i^T \mathbf{f}_i}_{\text{signal}} + \underbrace{\sum_{k \neq i} c_k \mathbf{f}_i^T \mathbf{f}_k}_{\text{noise}} \quad .
+\end{equation}
+
+The first term will reduce to $c_i$ which is the ``true'' signal of $\mathbf{f}_i$ in $\mathbf{r}$.
+The second term, however, is the noise.
+Although, the noise from an individual feature is at most $\epsilon$, if too many of the coefficients are non-zero, because of the size of $k$, this additive noise will drown out the true signal.

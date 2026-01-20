@@ -1,0 +1,32 @@
+\section{Methodology}
+\label{sec:methodology}
+
+My idea for finding the feature basis $\mathbf{F}$ requires defining two parameters $\tau$ and $\epsilon$.
+While $\epsilon$ represents the same noise threshold between features in $\mathbf{F}$, $\tau$ is a threshold such that for any two representations, if $\text{cossim}(\mathbf{r}_1, \mathbf{r}_2) > \tau$, they are deemed to have a feature in common and are labelled as neighbours.
+Finding the optimal values for these parameters can perhaps be found through empirical exploration or by treating them as hyperparameters.
+
+With $\tau$, for a given representation, we segment our representation dataset $\mathbf{X} \in \mathbb{R}^{d \times n}$ into two subsets.
+The first subset contains all the neighbour representations $\mathbf{X}^+$ and the second is all the non-neighbours $\mathbf{X}^-$.
+The idea is that there must be some feature $\mathbf{f}_i$ that unifies all the columns in $\mathbf{X}^+$ but isn't in any of the columns in $\mathbf{X}^-$.
+
+Thus, our first goal is to find the $\epsilon$-nullspace of $\mathbf{X}^-$ as this is where $\mathbf{f}_i$ must live.
+The $\epsilon$-nullspace is the space in $\mathbb{R}^d$ that is almost orthogonal to $\mathbf{X}^-$ plus the noise caused by the $\epsilon$-orthogonality between features.
+While $\epsilon$ is the noise between two normal features, we are dealing with a matrix $\mathbf{X}^-$ whose columns consist of unnormalized representations, requiring us to scale $\epsilon$ accordingly:
+
+\begin{equation}
+	\tilde{\epsilon} = \sqrt{\frac{1}{n} \sum_{r \in \mathbf{X}^-} \|\mathbf{r}\|_2^2} \cdot \epsilon
+\end{equation}
+
+where $\tilde{\epsilon}$ is the scaled $\epsilon$ that will be used as the noise threshold for the $\epsilon$-nullspace.
+
+
+We then decompose $\mathbf{X}^-$ into its singular value decomposition $\mathbf{X}^- = \mathbf{U} \Sigma \mathbf{V}^T$ and take the columns of the left singular vectors in $\mathbf{U}$ corresponding to singular values $< \tilde{epsilon}$ denoted as $\mathbf{U}_{low}$.
+One way to think about $U_{low}$ is that it's the basis for the subspace in $\mathbb{R}^d$ that has the minimum variance in $\mathbf{X}^-$, and is thus where our hidden feature must lie.
+
+All that remains is to project $\mathbf{X}^+$ onto this $\epsilon$-nullspace, and to find the direction with the highest variance in the resulting projection:
+
+\begin{equation}
+	\mathbf{f} = \text{SVD}_1(\mathbf{U}_{low} \mathbf{U}_{low}^T \mathbf{X}^+)
+\end{equation}
+
+where $\text{SVD}_1$ outputs the left singular vector corresponding to the largest singular value.
