@@ -142,3 +142,56 @@ def cluster_by_neighbors(
         clusters[neighbor_set].append(i)
 
     return clusters
+
+
+def compute_nullspace(
+    representations: torch.Tensor,
+    neighbor_indices: torch.Tensor,
+    epsilon: float
+) -> torch.Tensor:
+    """
+    Compute ε-nullspace of non-neighbor representations.
+
+    The nullspace contains directions orthogonal to non-neighbors,
+    which should include the feature shared by neighbors.
+
+    Args:
+        representations: (num_repr, d) tensor
+        neighbor_indices: 1D tensor of neighbor indices
+        epsilon: Noise threshold (0 for exact nullspace)
+
+    Returns:
+        (k, d) tensor of nullspace basis vectors (unit norm, orthogonal)
+    """
+    num_repr, d = representations.shape
+
+    # Get non-neighbor indices
+    all_indices = set(range(num_repr))
+    neighbor_set = set(neighbor_indices.tolist())
+    non_neighbor_indices = list(all_indices - neighbor_set)
+
+    if len(non_neighbor_indices) == 0:
+        # No non-neighbors: nullspace is entire space
+        return torch.eye(d)
+
+    # Stack non-neighbor representations
+    non_neighbors = representations[non_neighbor_indices]  # (m, d)
+
+    # SVD to find nullspace
+    # non_neighbors = U @ S @ Vh
+    # Nullspace is spanned by rows of Vh with singular values < epsilon
+    U, S, Vh = torch.linalg.svd(non_neighbors, full_matrices=True)
+
+    # For epsilon=0, nullspace is where S=0 (or very small)
+    # Vh has shape (d, d), rows are right singular vectors
+    threshold = epsilon if epsilon > 0 else 1e-6
+
+    # Find dimensions where singular values are below threshold
+    # S has length min(m, d), pad with zeros if needed
+    full_S = torch.zeros(d)
+    full_S[:len(S)] = S
+
+    nullspace_mask = full_S < threshold
+    nullspace_basis = Vh[nullspace_mask]  # (k, d)
+
+    return nullspace_basis

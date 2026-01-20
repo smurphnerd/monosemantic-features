@@ -2,6 +2,7 @@ import pytest
 import torch
 from src.config import SyntheticConfig, ExtractionConfig, compute_coef_min
 from src.extraction import compute_tau_bounds, resolve_tau, find_neighbors, cluster_by_neighbors
+from src.extraction import compute_nullspace
 
 
 def test_compute_tau_bounds_orthogonal():
@@ -97,3 +98,41 @@ def test_cluster_by_neighbors_returns_dict():
     # Each orthogonal vector forms its own cluster
     assert isinstance(clusters, dict)
     assert len(clusters) == 3
+
+
+def test_compute_nullspace_orthogonal():
+    """Nullspace of non-neighbors should contain the shared feature direction."""
+    # 4D space, 3 representations along first 3 axes
+    representations = torch.eye(4)[:3]  # (3, 4)
+
+    # Target is [0], neighbors are [0], non-neighbors are [1, 2]
+    neighbor_indices = torch.tensor([0])
+
+    # Nullspace of representations[1] and [2] (which span e2, e3)
+    # should include directions e1 and e4
+    nullspace = compute_nullspace(representations, neighbor_indices, epsilon=0.0)
+
+    # Nullspace should have rank 2 (4D space minus 2 non-neighbor directions)
+    assert nullspace.shape[0] == 2
+
+
+def test_compute_nullspace_contains_shared_direction():
+    """The nullspace should contain the direction shared by neighbors."""
+    # Create representations where neighbors share feature f1
+    f1 = torch.tensor([1.0, 0.0, 0.0, 0.0])
+    f2 = torch.tensor([0.0, 1.0, 0.0, 0.0])
+    f3 = torch.tensor([0.0, 0.0, 1.0, 0.0])
+
+    representations = torch.stack([
+        f1,  # 0: neighbor (has f1)
+        f1,  # 1: neighbor (has f1)
+        f2,  # 2: non-neighbor
+        f3,  # 3: non-neighbor
+    ])
+
+    neighbor_indices = torch.tensor([0, 1])
+    nullspace = compute_nullspace(representations, neighbor_indices, epsilon=0.0)
+
+    # Project f1 onto nullspace - should have high component
+    projection = nullspace @ f1
+    assert projection.norm() > 0.9  # f1 should be mostly in nullspace
