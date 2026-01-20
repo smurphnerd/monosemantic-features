@@ -234,3 +234,93 @@ def extract_feature(
     feature = projection / norm
 
     return feature
+
+
+def extract_all_features(
+    representations: torch.Tensor,
+    extraction_config: ExtractionConfig,
+    synthetic_config: SyntheticConfig
+) -> torch.Tensor:
+    """
+    Extract all monosemantic features from representations.
+
+    Algorithm:
+    1. Cluster representations by identical neighbor sets
+    2. For each cluster:
+       a. Average the representations in the cluster
+       b. Compute nullspace of non-neighbors
+       c. Project averaged representation onto nullspace
+       d. SVD to get dominant direction → extracted feature
+    3. Deduplicate similar features
+    4. Return all extracted features
+
+    Args:
+        representations: (num_repr, d) tensor
+        extraction_config: ExtractionConfig with tau and epsilon
+        synthetic_config: SyntheticConfig for resolving tau
+
+    Returns:
+        (m, d) tensor of extracted features
+    """
+    tau = resolve_tau(extraction_config, synthetic_config)
+    epsilon = extraction_config.epsilon
+
+    # Step 1: Cluster by neighbor sets
+    clusters = cluster_by_neighbors(representations, tau)
+
+    # Step 2: Extract feature from each cluster
+    extracted_features = []
+
+    for neighbor_set, indices in clusters.items():
+        if len(neighbor_set) < 2:
+            # Skip clusters with only one member (likely noise)
+            continue
+
+        neighbor_indices = torch.tensor(list(neighbor_set))
+
+        try:
+            nullspace = compute_nullspace(representations, neighbor_indices, epsilon)
+            if nullspace.shape[0] == 0:
+                continue
+            feature = extract_feature(representations, neighbor_indices, nullspace)
+            extracted_features.append(feature)
+        except ValueError:
+            # Skip if extraction fails (e.g., zero projection)
+            continue
+
+    if len(extracted_features) == 0:
+        return torch.empty(0, representations.shape[1])
+
+    # Stack features
+    features = torch.stack(extracted_features)  # (m, d)
+
+    # Step 3: Deduplicate similar features (cosine similarity > 0.99)
+    deduplicated = _deduplicate_features(features, threshold=0.99)
+
+    return deduplicated
+
+
+def _deduplicate_features(
+    features: torch.Tensor,
+    threshold: float = 0.99
+) -> torch.Tensor:
+    """Remove near-duplicate features based on cosine similarity."""
+    if features.shape[0] <= 1:
+        return features
+
+    # Compute pairwise cosine similarities
+    # features are unit norm, so dot product = cosine sim
+    sims = torch.abs(features @ features.T)  # Absolute for sign invariance
+
+    # Greedy deduplication: keep feature if not too similar to any kept feature
+    keep_mask = torch.ones(features.shape[0], dtype=torch.bool)
+
+    for i in range(features.shape[0]):
+        if not keep_mask[i]:
+            continue
+        # Mark all subsequent similar features as duplicates
+        for j in range(i + 1, features.shape[0]):
+            if sims[i, j] > threshold:
+                keep_mask[j] = False
+
+    return features[keep_mask]

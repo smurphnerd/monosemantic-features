@@ -173,3 +173,50 @@ def test_extract_feature_unit_norm():
     if nullspace.shape[0] > 0:  # Only if nullspace is non-trivial
         extracted = extract_feature(representations, neighbor_indices, nullspace)
         assert torch.isclose(extracted.norm(), torch.tensor(1.0), atol=1e-6)
+
+
+from src.synthetic import generate_feature_basis, generate_representations
+from src.extraction import extract_all_features
+
+
+def test_extract_all_features_orthogonal_basis():
+    """Full pipeline should recover features from orthogonal basis."""
+    torch.manual_seed(42)
+
+    # Note: num_representations must be small relative to d to ensure
+    # non-neighbors don't span the full space (leaving non-trivial nullspace)
+    config = SyntheticConfig(
+        d=16, n=16, epsilon=0.0, num_representations=20,
+        sparsity_mode="fixed", k=2, coef_min_floor=0.3
+    )
+    extraction_config = ExtractionConfig(tau=None, tau_margin=0.5, epsilon=0.0)
+
+    features = generate_feature_basis(config.d, config.n, config.epsilon)
+    representations, _ = generate_representations(features, config)
+
+    extracted = extract_all_features(representations, extraction_config, config)
+
+    # Should extract some features (at least a few)
+    assert extracted.shape[0] > 0
+    assert extracted.shape[1] == config.d
+
+
+def test_extract_all_features_unit_norm():
+    """All extracted features should have unit norm."""
+    torch.manual_seed(42)
+
+    # Note: num_representations must be small relative to d to ensure
+    # non-neighbors don't span the full space (leaving non-trivial nullspace)
+    config = SyntheticConfig(
+        d=16, n=16, epsilon=0.0, num_representations=20,
+        sparsity_mode="fixed", k=2, coef_min_floor=0.3
+    )
+    extraction_config = ExtractionConfig(tau=None, epsilon=0.0)
+
+    features = generate_feature_basis(config.d, config.n, config.epsilon)
+    representations, _ = generate_representations(features, config)
+
+    extracted = extract_all_features(representations, extraction_config, config)
+
+    norms = torch.norm(extracted, dim=1)
+    assert torch.allclose(norms, torch.ones(extracted.shape[0]), atol=1e-6)
