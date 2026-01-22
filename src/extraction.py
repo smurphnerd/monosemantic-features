@@ -150,18 +150,25 @@ def compute_nullspace(
     epsilon: float
 ) -> torch.Tensor:
     """
-    Compute ε-nullspace of non-neighbor representations.
+    Compute ε-nullspace of mean-centered non-neighbor representations.
 
     The nullspace contains directions orthogonal to non-neighbors,
     which should include the feature shared by neighbors.
 
+    Following the methodology:
+    1. Mean-center non-neighbors: X̄_neg = X_neg - μ_neg
+    2. Compute scaled epsilon: ε̃ = √(n_neg) · RMS(‖r‖₂) · ε
+    3. SVD to find directions with σ_i < ε̃
+
+    Convention: All matrices use row-major format (rows are vectors).
+
     Args:
-        representations: (num_repr, d) tensor
+        representations: (num_repr, d) tensor - rows are representation vectors
         neighbor_indices: 1D tensor of neighbor indices
         epsilon: Noise threshold (0 for exact nullspace)
 
     Returns:
-        (k, d) tensor of nullspace basis vectors (unit norm, orthogonal)
+        (k, d) tensor of nullspace basis vectors - rows are unit-norm orthogonal vectors
     """
     num_repr, d = representations.shape
 
@@ -174,25 +181,38 @@ def compute_nullspace(
         # No non-neighbors: nullspace is entire space
         return torch.eye(d)
 
-    # Stack non-neighbor representations
-    non_neighbors = representations[non_neighbor_indices]  # (m, d)
+    # Stack non-neighbor representations: (n_neg, d) - rows are vectors
+    non_neighbors = representations[non_neighbor_indices]
+    n_neg = len(non_neighbor_indices)
 
-    # SVD to find nullspace
-    # non_neighbors = U @ S @ Vh
-    # Nullspace is spanned by rows of Vh with singular values < epsilon
-    U, S, Vh = torch.linalg.svd(non_neighbors, full_matrices=True)
+    # Mean-center the non-neighbors
+    mean_neg = non_neighbors.mean(dim=0, keepdim=True)  # (1, d)
+    non_neighbors_centered = non_neighbors - mean_neg  # (n_neg, d)
 
-    # For epsilon=0, nullspace is where S=0 (or very small)
-    # Vh has shape (d, d), rows are right singular vectors
-    threshold = epsilon if epsilon > 0 else 1e-6
+    # SVD on row-major data: X = U @ diag(S) @ Vh
+    # Vh rows are principal directions in d-space
+    # Small singular values → nullspace directions
+    U, S, Vh = torch.linalg.svd(non_neighbors_centered, full_matrices=True)
+    # U: (n_neg, n_neg), S: (min(n_neg, d),), Vh: (d, d)
 
-    # Find dimensions where singular values are below threshold
-    # S has length min(m, d), pad with zeros if needed
+    # Compute scaled epsilon threshold:
+    # ε̃ = √(n_neg) · RMS(‖r‖₂) · ε
+    if epsilon > 0:
+        # RMS of representation norms (use all representations for stability)
+        norms = torch.norm(representations, dim=1)
+        rms_norm = torch.sqrt(torch.mean(norms ** 2))
+        scaled_epsilon = (n_neg ** 0.5) * rms_norm * epsilon
+    else:
+        # For epsilon=0, use small threshold for numerical stability
+        scaled_epsilon = 1e-6
+
+    # Find rows of Vh where singular values are below scaled threshold
+    # S has length min(n_neg, d), pad with zeros for remaining directions
     full_S = torch.zeros(d)
     full_S[:len(S)] = S
 
-    nullspace_mask = full_S < threshold
-    nullspace_basis = Vh[nullspace_mask]  # (k, d)
+    nullspace_mask = full_S < scaled_epsilon
+    nullspace_basis = Vh[nullspace_mask]  # (k, d) - rows are basis vectors
 
     return nullspace_basis
 
@@ -205,10 +225,18 @@ def extract_feature(
     """
     Extract feature by projecting neighbors onto nullspace and finding dominant direction.
 
+    Following the methodology:
+    f = SVD₁(U_low U_low^T X_pos)
+
+    Projects ALL neighbor representations onto the nullspace, then uses SVD
+    to find the direction of maximum variance.
+
+    Convention: All matrices use row-major format (rows are vectors).
+
     Args:
-        representations: (num_repr, d) tensor
+        representations: (num_repr, d) tensor - rows are representation vectors
         neighbor_indices: 1D tensor of neighbor indices
-        nullspace: (k, d) tensor of nullspace basis vectors
+        nullspace: (k, d) tensor of nullspace basis vectors - rows are basis vectors
 
     Returns:
         (d,) unit-norm feature vector
@@ -216,22 +244,21 @@ def extract_feature(
     if nullspace.shape[0] == 0:
         raise ValueError("Nullspace is empty, cannot extract feature")
 
-    # Get neighbor representations
-    neighbors = representations[neighbor_indices]  # (m, d)
+    # Get neighbor representations: (m, d) - rows are vectors
+    neighbors = representations[neighbor_indices]
 
-    # Average the neighbors
-    avg_neighbor = neighbors.mean(dim=0)  # (d,)
+    # Project ALL neighbors onto nullspace
+    # For row vectors: projected = X @ nullspace.T @ nullspace
+    # This applies the projection matrix P = nullspace.T @ nullspace to each row
+    projected = neighbors @ nullspace.T @ nullspace  # (m, d)
 
-    # Project onto nullspace: project = nullspace.T @ nullspace @ avg_neighbor
-    # But we want the component in the nullspace
-    projection = nullspace.T @ (nullspace @ avg_neighbor)  # (d,)
+    # SVD to find direction of maximum variance
+    # projected = U @ diag(S) @ Vh
+    # Vh[0] (first row) is the dominant direction in d-space
+    U, S, Vh = torch.linalg.svd(projected, full_matrices=False)
 
-    # Normalize to unit vector
-    norm = projection.norm()
-    if norm < 1e-8:
-        raise ValueError("Projection onto nullspace has zero norm")
-
-    feature = projection / norm
+    # First right singular vector is the feature (already unit norm)
+    feature = Vh[0]  # (d,)
 
     return feature
 

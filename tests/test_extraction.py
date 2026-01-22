@@ -109,12 +109,22 @@ def test_compute_nullspace_orthogonal():
     # Target is [0], neighbors are [0], non-neighbors are [1, 2]
     neighbor_indices = torch.tensor([0])
 
-    # Nullspace of representations[1] and [2] (which span e2, e3)
-    # should include directions e1 and e4
+    # With mean-centering, 2 non-neighbor points become colinear (rank 1)
+    # So nullspace is d - 1 = 3 dimensional
     nullspace = compute_nullspace(representations, neighbor_indices, epsilon=0.0)
 
-    # Nullspace should have rank 2 (4D space minus 2 non-neighbor directions)
-    assert nullspace.shape[0] == 2
+    # Nullspace should have rank 3 (4D space minus 1 centered direction)
+    assert nullspace.shape[0] == 3
+
+    # Key property: e1 (shared direction) and e4 (unused direction) should be in nullspace
+    e1 = torch.tensor([1.0, 0.0, 0.0, 0.0])
+    e4 = torch.tensor([0.0, 0.0, 0.0, 1.0])
+
+    # Project onto nullspace and check magnitude
+    proj_e1 = nullspace @ e1
+    proj_e4 = nullspace @ e4
+    assert proj_e1.norm() > 0.99, "e1 should be in nullspace"
+    assert proj_e4.norm() > 0.99, "e4 should be in nullspace"
 
 
 def test_compute_nullspace_contains_shared_direction():

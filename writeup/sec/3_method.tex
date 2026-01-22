@@ -5,28 +5,34 @@ My idea for finding the feature basis $\mathbf{F}$ requires defining two paramet
 While $\epsilon$ represents the same noise threshold between features in $\mathbf{F}$, $\tau$ is a threshold such that for any two representations, if $\text{cossim}(\mathbf{r}_1, \mathbf{r}_2) > \tau$, they are deemed to have a feature in common and are labelled as neighbours.
 Finding the optimal values for these parameters can perhaps be found through empirical exploration or by treating them as hyperparameters.
 
-With $\tau$, for a given representation, we segment our representation dataset $\mathbf{X} \in \mathbb{R}^{d \times n}$ into two subsets.
-The first subset contains all the neighbour representations $\mathbf{X}^+$ and the second is all the non-neighbours $\mathbf{X}^-$.
-The idea is that there must be some feature $\mathbf{f}_i$ that unifies all the columns in $\mathbf{X}^+$ but isn't in any of the columns in $\mathbf{X}^-$.
+With $\tau$, for a given representation, we segment our representation dataset $\mathbf{X} \in \mathbb{R}^{d \times n}$ into two subsets: the neighbour representations $\mathbf{X}_{\text{pos}}$ and the non-neighbours $\mathbf{X}_{\text{neg}}$.
+To focus on the variance structure, we compute the mean-centered non-neighbor matrix: $\bar{\mathbf{X}}_{\text{neg}} = \mathbf{X}_{\text{neg}} - \boldsymbol{\mu}_{\text{neg}}$, where $\boldsymbol{\mu}_{\text{neg}}$ is the mean of the columns in $\mathbf{X}_{\text{neg}}$.
 
-Thus, our first goal is to find the $\epsilon$-nullspace of $\mathbf{X}^-$ as this is where $\mathbf{f}_i$ must live.
-The $\epsilon$-nullspace is the space in $\mathbb{R}^d$ that is almost orthogonal to $\mathbf{X}^-$ plus the noise caused by the $\epsilon$-orthogonality between features.
-While $\epsilon$ is the noise between two normal features, we are dealing with a matrix $\mathbf{X}^-$ whose columns consist of unnormalized representations, requiring us to scale $\epsilon$ accordingly:
+The idea is that there must be some feature $\mathbf{f}_i$ that unifies all the columns in $\mathbf{X}_{\text{pos}}$ but is absent from $\mathbf{X}_{\text{neg}}$.
+Thus, our first goal is to find the $\epsilon$-nullspace of $\bar{\mathbf{X}}_{\text{neg}}$ as this is where $\mathbf{f}_i$ must reside.
+The $\epsilon$-nullspace is the space in $\mathbb{R}^d$ that is almost orthogonal to the columns of $\mathbf{X}_{\text{neg}}$ plus the noise caused by the $\epsilon$-orthogonality between features.
+
+While $\epsilon$ represents the theoretical noise floor between unit-norm features, two adjustments are required to apply this threshold to the data matrix $\mathbf{X}_{\text{neg}}$.
+First, the representations are unnormalized, meaning the noise scales proportionally with the average magnitude of the vectors.
+Second, because the singular values of a matrix grow with the square root of the number of samples ($n_{\text{neg}}$), the threshold must be scaled to account for this additive accumulation.
+We therefore define the scaled noise threshold $\tilde{\epsilon}$ as:
 
 \begin{equation}
-	\tilde{\epsilon} = \sqrt{\frac{1}{n} \sum_{r \in \mathbf{X}^-} \|\mathbf{r}\|_2^2} \cdot \epsilon
+	\tilde{\epsilon} = \underbrace{\sqrt{n_{\text{neg}}}}_{\text{Sample Scaling}} \cdot \underbrace{\text{RMS}(\|\mathbf{r}\|_2)}_{\text{Magnitude Scaling}} \cdot \epsilon
 \end{equation}
 
 where $\tilde{\epsilon}$ is the scaled $\epsilon$ that will be used as the noise threshold for the $\epsilon$-nullspace.
 
+We compute the singular value decomposition $\bar{\mathbf{X}}_{\text{neg}} = \mathbf{U} \Sigma \mathbf{V}^T$.
+The left singular vectors $\mathbf{U}$ are equivalent to the eigenvectors of the sample covariance matrix, $\mathbf{S}_{\text{neg}} = \frac{1}{n_{\text{neg}}-1} \bar{\mathbf{X}}_{\text{neg}} \bar{\mathbf{X}}_{\text{neg}}^T$, which represents the geometric structure of the non-neighbor data.
+We define $\mathbf{U}_{\text{low}}$ as the subset of columns in $\mathbf{U}$ whose corresponding singular values satisfy $\sigma_i < \tilde{\epsilon}$.
 
-We then decompose $\mathbf{X}^-$ into its singular value decomposition $\mathbf{X}^- = \mathbf{U} \Sigma \mathbf{V}^T$ and take the columns of the left singular vectors in $\mathbf{U}$ corresponding to singular values $< \tilde{epsilon}$ denoted as $\mathbf{U}_{low}$.
-One way to think about $U_{low}$ is that it's the basis for the subspace in $\mathbb{R}^d$ that has the minimum variance in $\mathbf{X}^-$, and is thus where our hidden feature must lie.
+Geometrically, $\mathbf{U}$ defines the principal axes of a high-dimensional ellipse.
+The most `stretched' axes correspond to directions of high variance (large $\sigma_i$), while the `flattest' axes, captured by $\mathbf{U}_{\text{low}}$, represent the subspace where these features are effectively absent.
 
-All that remains is to project $\mathbf{X}^+$ onto this $\epsilon$-nullspace, and to find the direction with the highest variance in the resulting projection:
-
+Finally, we project the neighbor data $\mathbf{X}_{\text{pos}}$ onto this $\epsilon$-nullspace and identify the direction of maximum variance in the residue.
 \begin{equation}
-	\mathbf{f} = \text{SVD}_1(\mathbf{U}_{low} \mathbf{U}_{low}^T \mathbf{X}^+)
+	\mathbf{f} = \text{SVD}_1(\mathbf{U}_{\text{low}} \mathbf{U}_{\text{low}}^T \mathbf{X}_{\text{pos}})
 \end{equation}
 
 where $\text{SVD}_1$ outputs the left singular vector corresponding to the largest singular value.

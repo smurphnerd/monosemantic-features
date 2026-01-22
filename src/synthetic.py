@@ -21,11 +21,11 @@ def generate_feature_basis(d: int, n: int, epsilon: float) -> torch.Tensor:
     if epsilon == 0.0:
         if n > d:
             raise ValueError(f"For epsilon=0, requires n <= d, got n={n}, d={d}")
-        # Generate random matrix and orthogonalize via QR
+        # QR decomposition produces orthonormal columns, so we create (d, n)
+        # and transpose the result to get (n, d) where rows are feature vectors
         random_matrix = torch.randn(d, n)
         q, _ = torch.linalg.qr(random_matrix)
-        # q is (d, n), we want (n, d)
-        return q.T
+        return q.T  # (n, d) - rows are unit-norm orthogonal feature vectors
     else:
         raise NotImplementedError(f"epsilon > 0 not yet implemented, got epsilon={epsilon}")
 
