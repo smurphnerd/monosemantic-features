@@ -13,10 +13,10 @@ def test_compute_tau_bounds_orthogonal():
     coef_min = 0.1
     coef_max = 1.0
 
-    tau_min, tau_max = compute_tau_bounds(k, epsilon, coef_min, coef_max)
+    tau_upper, tau_lower = compute_tau_bounds(k, epsilon, coef_min, coef_max)
 
-    # tau_max should be less than tau_min for valid separation
-    assert tau_max < tau_min
+    # tau_lower should be less than tau_upper for valid separation
+    assert tau_lower < tau_upper
 
 
 def test_resolve_tau_auto():

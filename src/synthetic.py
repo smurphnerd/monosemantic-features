@@ -27,12 +27,13 @@ def generate_feature_basis(d: int, n: int, epsilon: float) -> torch.Tensor:
         q, _ = torch.linalg.qr(random_matrix)
         return q.T  # (n, d) - rows are unit-norm orthogonal feature vectors
     else:
-        raise NotImplementedError(f"epsilon > 0 not yet implemented, got epsilon={epsilon}")
+        raise NotImplementedError(
+            f"epsilon > 0 not yet implemented, got epsilon={epsilon}"
+        )
 
 
 def generate_representations(
-    features: torch.Tensor,
-    config: SyntheticConfig
+    features: torch.Tensor, config: SyntheticConfig
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Generate representations as sparse linear combinations of features.
@@ -56,7 +57,7 @@ def generate_representations(
     for i in range(num_repr):
         # Determine which features are active based on sparsity mode
         if config.sparsity_mode == "fixed":
-            active_indices = torch.randperm(n)[:config.k]
+            active_indices = torch.randperm(n)[: config.k]
         elif config.sparsity_mode == "variable":
             k_min = config.k_min if config.k_min is not None else 1
             num_active = torch.randint(k_min, config.k + 1, (1,)).item()
@@ -76,8 +77,7 @@ def generate_representations(
         # Uniform magnitude in [coef_min, coef_max]
         magnitudes = torch.rand(num_active) * (coef_max - coef_min) + coef_min
         # Random signs
-        signs = torch.sign(torch.rand(num_active) - 0.5)
-        signs[signs == 0] = 1  # Handle exact 0.5 case
+        signs = torch.randint(0, 2, (num_active,)) * 2 - 1
 
         coefficients[i, active_indices] = magnitudes * signs
 

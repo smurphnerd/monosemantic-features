@@ -9,43 +9,35 @@ def compute_tau_bounds(
     coef_max: float
 ) -> tuple[float, float]:
     """
-    Compute valid τ bounds based on generative parameters.
-
-    For two representations sharing feature f_i with coefficients c1, c2:
-    - Their dot product includes c1*c2 (shared feature contribution)
-    - Plus interference from other features (ε-correlated)
+    Compute valid τ range based on generative parameters.
 
     Args:
         k: Maximum number of active features per representation
-        epsilon: Orthogonality tolerance
+        epsilon: Orthogonality tolerance (|⟨f_i, f_j⟩| ≤ ε for i≠j)
         coef_min: Minimum coefficient magnitude
         coef_max: Maximum coefficient magnitude
 
     Returns:
-        tau_min: Worst-case cosine similarity when sharing a feature
-        tau_max: Best-case cosine similarity when NOT sharing a feature
+        tau_upper: Upper bound on τ (min similarity when sharing a feature)
+        tau_lower: Lower bound on τ (max similarity when NOT sharing)
+
+    For τ to separate sharing from non-sharing, we need tau_lower < τ < tau_upper.
     """
-    # Worst case for sharing: minimum coefficients on shared feature,
-    # maximum interference from k-1 other features
-    # For orthogonal (epsilon=0): interference is 0
-    # Shared contribution: coef_min * coef_min
     # Max norm per representation: sqrt(k * coef_max^2)
+    max_norm_sq = k * coef_max ** 2
 
-    min_shared_dot = coef_min * coef_min
-    max_interference = (k - 1) * (k - 1) * coef_max * coef_max * epsilon
-    max_norm = (k * coef_max ** 2) ** 0.5
+    # tau_upper: minimum similarity when SHARING a feature
+    # Worst case: minimum coefficients on shared feature, maximum norms
+    # cossim = (c1 * c2) / (||r1|| * ||r2||) ≥ coef_min^2 / max_norm^2
+    tau_upper = coef_min * coef_min / max_norm_sq
 
-    # tau_min: minimum similarity when sharing
-    # Worst case: min shared contribution, max norms
-    tau_min = min_shared_dot / (max_norm * max_norm)
+    # tau_lower: maximum similarity when NOT sharing any feature
+    # Only ε-interference between k features in each representation
+    # Max dot product: k * k * coef_max^2 * ε (all pairs ε-correlated)
+    # For ε=0: tau_lower = 0 (orthogonal features have zero interference)
+    tau_lower = k * k * coef_max * coef_max * epsilon / max_norm_sq
 
-    # tau_max: maximum similarity when NOT sharing
-    # Best case for non-sharing: all k features ε-correlated
-    # Each pair contributes up to coef_max^2 * epsilon
-    tau_max = k * k * coef_max * coef_max * epsilon / (max_norm * max_norm)
-
-    # For epsilon=0, tau_max should be 0
-    return tau_min, tau_max
+    return tau_upper, tau_lower
 
 
 def resolve_tau(
@@ -66,7 +58,7 @@ def resolve_tau(
         return extraction_config.tau
 
     coef_min = compute_coef_min(synthetic_config)
-    tau_min, tau_max = compute_tau_bounds(
+    tau_upper, tau_lower = compute_tau_bounds(
         k=synthetic_config.k,
         epsilon=synthetic_config.epsilon,
         coef_min=coef_min,
@@ -74,9 +66,9 @@ def resolve_tau(
     )
 
     # Interpolate between bounds using tau_margin
-    # margin=0 → tau_max, margin=1 → tau_min, margin=0.5 → midpoint
+    # margin=0 → tau_lower, margin=1 → tau_upper, margin=0.5 → midpoint
     margin = extraction_config.tau_margin
-    tau = tau_max + margin * (tau_min - tau_max)
+    tau = tau_lower + margin * (tau_upper - tau_lower)
 
     return tau
 
@@ -87,12 +79,15 @@ def find_neighbors(
     tau: float
 ) -> torch.Tensor:
     """
-    Find indices of representations with cosine similarity >= tau to target.
+    Find indices of representations with |cosine similarity| >= tau to target.
+
+    Uses absolute cosine similarity to catch both aligned and anti-aligned
+    representations that share a feature (regardless of coefficient sign).
 
     Args:
-        representations: (num_repr, d) tensor
+        representations: (num_repr, d) tensor - rows are representation vectors
         target_idx: Index of target representation
-        tau: Cosine similarity threshold
+        tau: Cosine similarity threshold (applied to absolute value)
 
     Returns:
         1D tensor of neighbor indices (always includes target_idx)
@@ -106,8 +101,9 @@ def find_neighbors(
     dots = representations @ target
     cosine_sims = dots / (norms * target_norm + 1e-8)
 
-    # Find neighbors (cosine sim >= tau)
-    neighbor_mask = cosine_sims >= tau
+    # Find neighbors using absolute cosine similarity
+    # This catches both aligned (+) and anti-aligned (-) representations
+    neighbor_mask = torch.abs(cosine_sims) >= tau
     neighbor_indices = torch.where(neighbor_mask)[0]
 
     return neighbor_indices
@@ -274,20 +270,19 @@ def extract_all_features(
     Algorithm:
     1. Cluster representations by identical neighbor sets
     2. For each cluster:
-       a. Average the representations in the cluster
-       b. Compute nullspace of non-neighbors
-       c. Project averaged representation onto nullspace
-       d. SVD to get dominant direction → extracted feature
+       a. Compute ε-nullspace of mean-centered non-neighbors
+       b. Project ALL neighbor representations onto nullspace
+       c. SVD to get dominant direction → extracted feature
     3. Deduplicate similar features
     4. Return all extracted features
 
     Args:
-        representations: (num_repr, d) tensor
+        representations: (num_repr, d) tensor - rows are representation vectors
         extraction_config: ExtractionConfig with tau and epsilon
         synthetic_config: SyntheticConfig for resolving tau
 
     Returns:
-        (m, d) tensor of extracted features
+        (m, d) tensor of extracted features - rows are unit-norm feature vectors
     """
     tau = resolve_tau(extraction_config, synthetic_config)
     epsilon = extraction_config.epsilon
