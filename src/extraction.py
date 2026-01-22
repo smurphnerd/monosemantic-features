@@ -76,7 +76,8 @@ def resolve_tau(
 def find_neighbors(
     representations: torch.Tensor,
     target_idx: int,
-    tau: float
+    tau: float,
+    norms: torch.Tensor | None = None
 ) -> torch.Tensor:
     """
     Find indices of representations with |cosine similarity| >= tau to target.
@@ -88,14 +89,16 @@ def find_neighbors(
         representations: (num_repr, d) tensor - rows are representation vectors
         target_idx: Index of target representation
         tau: Cosine similarity threshold (applied to absolute value)
+        norms: Precomputed norms (num_repr,) tensor, or None to compute
 
     Returns:
         1D tensor of neighbor indices (always includes target_idx)
     """
     target = representations[target_idx]
 
-    # Compute cosine similarities
-    norms = torch.norm(representations, dim=1)
+    # Use precomputed norms if provided
+    if norms is None:
+        norms = torch.norm(representations, dim=1)
     target_norm = norms[target_idx]
 
     dots = representations @ target
@@ -120,7 +123,7 @@ def cluster_by_neighbors(
     the same dominant feature.
 
     Args:
-        representations: (num_repr, d) tensor
+        representations: (num_repr, d) tensor - rows are representation vectors
         tau: Cosine similarity threshold for neighbors
 
     Returns:
@@ -129,8 +132,11 @@ def cluster_by_neighbors(
     num_repr = representations.shape[0]
     clusters: dict[frozenset[int], list[int]] = {}
 
+    # Precompute norms once for all representations
+    norms = torch.norm(representations, dim=1)
+
     for i in range(num_repr):
-        neighbor_indices = find_neighbors(representations, i, tau)
+        neighbor_indices = find_neighbors(representations, i, tau, norms=norms)
         neighbor_set = frozenset(neighbor_indices.tolist())
 
         if neighbor_set not in clusters:
