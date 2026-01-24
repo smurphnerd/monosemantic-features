@@ -1,6 +1,21 @@
+import math
+
 import torch
 
 from src.config import SyntheticConfig, compute_coef_min
+
+
+def welch_bound(n: int, d: int) -> float:
+    """
+    Theoretical minimum achievable max coherence for n unit vectors in d dims.
+
+    Returns:
+        0.0 if n <= d (orthonormal basis possible)
+        sqrt((n-d) / (d*(n-1))) if n > d
+    """
+    if n <= d:
+        return 0.0
+    return math.sqrt((n - d) / (d * (n - 1)))
 
 
 def generate_feature_basis(d: int, n: int, epsilon: float) -> torch.Tensor:

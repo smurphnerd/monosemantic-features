@@ -76,3 +76,28 @@ def test_generate_representations_reconstruction():
     # representations should equal coefficients @ features
     reconstructed = coefficients @ features
     assert torch.allclose(representations, reconstructed, atol=1e-6)
+
+
+def test_welch_bound_orthogonal_possible():
+    """When n <= d, Welch bound is 0 (orthonormal basis possible)."""
+    from src.synthetic import welch_bound
+    assert welch_bound(n=5, d=10) == 0.0
+    assert welch_bound(n=10, d=10) == 0.0
+
+
+def test_welch_bound_overcomplete():
+    """When n > d, Welch bound is positive."""
+    from src.synthetic import welch_bound
+    # n=100, d=64: sqrt((100-64)/(64*(100-1))) = sqrt(36/6336) ≈ 0.0754
+    bound = welch_bound(n=100, d=64)
+    assert bound > 0
+    assert abs(bound - 0.0754) < 0.001
+
+
+def test_welch_bound_formula():
+    """Verify exact formula: sqrt((n-d)/(d*(n-1)))."""
+    import math
+    from src.synthetic import welch_bound
+    n, d = 20, 10
+    expected = math.sqrt((n - d) / (d * (n - 1)))
+    assert abs(welch_bound(n, d) - expected) < 1e-10
