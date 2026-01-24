@@ -22,11 +22,6 @@ def test_generate_orthogonal_basis_orthogonality():
     assert torch.allclose(off_diag, torch.zeros_like(off_diag), atol=1e-6)
 
 
-def test_generate_orthogonal_basis_requires_n_leq_d():
-    with pytest.raises(NotImplementedError):
-        generate_feature_basis(d=5, n=10)
-
-
 from src.config import SyntheticConfig
 from src.synthetic import generate_representations
 
@@ -150,3 +145,48 @@ def test_generate_feature_basis_orthonormal():
     # Orthogonal (G = I for orthonormal)
     G = F @ F.T
     assert torch.allclose(G, torch.eye(5), atol=1e-6)
+
+
+def test_generate_feature_basis_overcomplete_shape():
+    """For n > d, still returns correct shape."""
+    from src.synthetic import generate_feature_basis
+
+    result = generate_feature_basis(d=5, n=10)
+
+    assert result.features.shape == (10, 5)
+
+
+def test_generate_feature_basis_overcomplete_unit_norm():
+    """For n > d, features are unit norm."""
+    import torch
+    from src.synthetic import generate_feature_basis
+
+    result = generate_feature_basis(d=5, n=10)
+    norms = torch.linalg.norm(result.features, dim=1)
+
+    assert torch.allclose(norms, torch.ones(10), atol=1e-5)
+
+
+def test_generate_feature_basis_overcomplete_coherence():
+    """For n > d, achieved_epsilon >= welch_bound (can't beat physics)."""
+    from src.synthetic import generate_feature_basis
+
+    result = generate_feature_basis(d=5, n=10)
+
+    assert result.achieved_epsilon >= result.welch_bound - 1e-6
+    assert result.welch_bound > 0  # Overcomplete case
+
+
+def test_generate_feature_basis_overcomplete_coherence_matches():
+    """achieved_epsilon matches actual max coherence."""
+    import torch
+    from src.synthetic import generate_feature_basis
+
+    result = generate_feature_basis(d=5, n=10)
+    F = result.features
+
+    G = F @ F.T
+    G.fill_diagonal_(0)
+    actual_max = G.abs().max().item()
+
+    assert abs(actual_max - result.achieved_epsilon) < 1e-6
