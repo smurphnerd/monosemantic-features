@@ -39,67 +39,80 @@ def _compute_coherence(features: torch.Tensor) -> float:
 def _iterative_projection(
     d: int,
     n: int,
-    max_iters: int = 500,
-    shrink_factor: float = 0.9,
-    patience: int = 20,
-    tolerance: float = 1e-6
+    max_iters: int = 10000,
+    patience: int = 500,
 ) -> FeatureBasisResult:
     """
-    Generate n > d features via Gram matrix alternating projection.
+    Generate n > d features with minimal coherence via vectorized gradient descent.
 
-    Alternates between:
-    1. Shrinking off-diagonal coherence in Gram matrix
-    2. Projecting back to valid Gram matrix (PSD, rank d)
+    Uses soft thresholding: penalizes all correlations above Welch bound,
+    with stronger penalty for larger violations.
     """
     # Initialize with random unit vectors
     features = torch.randn(n, d)
     features = F.normalize(features, dim=1)
 
-    prev_coherence = float('inf')
+    target = welch_bound(n, d)
+    best_coherence = float('inf')
+    best_features = features.clone()
     stall_count = 0
     converged = False
 
-    for iteration in range(max_iters):
-        # Current Gram matrix
+    # Adaptive learning rate based on problem difficulty
+    redundancy = n / d
+    lr = 0.5 / redundancy  # Smaller lr for higher redundancy
+
+    for _ in range(max_iters):
+        # Compute Gram matrix (n x n)
         G = features @ features.T
+        G.fill_diagonal_(0)
 
-        # Shrink off-diagonal entries toward 0
-        off_diag = G - torch.eye(n)
-        G_shrunk = torch.eye(n) + shrink_factor * off_diag
+        curr_coherence = G.abs().max().item()
 
-        # Project to valid Gram matrix via eigendecomposition
-        # Keep top d non-negative eigenvalues
-        eigenvalues, eigenvectors = torch.linalg.eigh(G_shrunk)
-        eigenvalues = torch.clamp(eigenvalues, min=0)
-
-        # Select top d eigenvalues
-        top_d_idx = eigenvalues.argsort(descending=True)[:d]
-        selected_vals = eigenvalues[top_d_idx]
-        selected_vecs = eigenvectors[:, top_d_idx]
-
-        # Reconstruct features: F = V * sqrt(Lambda)
-        features = selected_vecs * selected_vals.sqrt().unsqueeze(0)
-        features = F.normalize(features, dim=1)
+        # Track best
+        if curr_coherence < best_coherence - 1e-6:
+            best_coherence = curr_coherence
+            best_features = features.clone()
+            stall_count = 0
+        else:
+            stall_count += 1
 
         # Check convergence
-        curr_coherence = _compute_coherence(features)
+        if stall_count >= patience:
+            converged = True
+            break
 
-        if prev_coherence - curr_coherence < tolerance:
-            stall_count += 1
-            if stall_count >= patience:
-                converged = True
-                break
-        else:
-            stall_count = 0
+        # Decay learning rate when stuck
+        if stall_count > 0 and stall_count % 100 == 0:
+            lr *= 0.8
 
-        prev_coherence = curr_coherence
+        # Stop if close to Welch bound
+        if curr_coherence < target * 1.05:
+            converged = True
+            break
 
-    achieved_eps = _compute_coherence(features)
+        # Soft threshold: penalize correlations above target
+        # Use squared penalty for smoother gradients
+        excess = G.abs() - target
+        penalty = torch.clamp(excess, min=0) ** 2
+        penalty = penalty * torch.sign(G)
+
+        # Vectorized gradient
+        gradient = penalty @ features
+
+        # Normalize gradient to prevent exploding updates
+        grad_norm = gradient.norm()
+        if grad_norm > 1e-8:
+            gradient = gradient / grad_norm
+
+        # Update and normalize
+        features = features - lr * gradient
+        features = F.normalize(features, dim=1)
 
     return FeatureBasisResult(
-        features=features,
-        achieved_epsilon=achieved_eps,
-        welch_bound=welch_bound(n, d),
+        features=best_features,
+        achieved_epsilon=best_coherence,
+        welch_bound=target,
         converged=converged
     )
 
