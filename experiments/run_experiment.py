@@ -7,9 +7,10 @@ from src.config import ExperimentConfig, SyntheticConfig, ExtractionConfig
 from src.synthetic import generate_feature_basis, generate_representations
 from src.extraction import extract_all_features
 from src.metrics import evaluate, MetricsResult
+from src.logging_utils import log_experiment_config
 
 
-def run_experiment(config: ExperimentConfig) -> MetricsResult:
+def run_experiment(config: ExperimentConfig, verbose: bool = False) -> MetricsResult:
     """
     Execute full experiment pipeline.
 
@@ -22,10 +23,14 @@ def run_experiment(config: ExperimentConfig) -> MetricsResult:
 
     Args:
         config: ExperimentConfig with all settings
+        verbose: If True, log detailed extraction information
 
     Returns:
         MetricsResult with evaluation metrics
     """
+    if verbose:
+        log_experiment_config(config)
+
     # Set seed
     torch.manual_seed(config.seed)
 
@@ -42,7 +47,8 @@ def run_experiment(config: ExperimentConfig) -> MetricsResult:
 
     # Run extraction
     extracted = extract_all_features(
-        representations, config.extraction, config.synthetic
+        representations, config.extraction, config.synthetic, verbose=verbose,
+        use_minimality_filter=config.extraction.use_minimality_filter
     )
 
     # Evaluate
@@ -103,6 +109,7 @@ def main():
     parser.add_argument("--k", type=int, default=3, help="Sparsity (active features)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--output", type=str, default=None, help="Output path for results JSON")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
 
     args = parser.parse_args()
 
@@ -119,7 +126,7 @@ def main():
     )
 
     print(f"Running experiment: d={args.d}, n={args.n}, epsilon={args.epsilon}, k={args.k}")
-    result = run_experiment(config)
+    result = run_experiment(config, verbose=args.verbose)
 
     print(f"\nResults:")
     print(f"  Recovery rate: {result.recovery_rate:.2%}")

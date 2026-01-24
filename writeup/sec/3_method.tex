@@ -2,10 +2,10 @@
 \label{sec:methodology}
 
 My idea for finding the feature basis $\mathbf{F}$ requires defining two parameters $\tau$ and $\epsilon$.
-While $\epsilon$ represents the same noise threshold between features in $\mathbf{F}$, $\tau$ is a threshold such that for any two representations, if $|\text{cossim}(\mathbf{r}_1, \mathbf{r}_2)| > \tau$, they are deemed to have a feature in common and are labelled as neighbours.
+While $\epsilon$ represents the same noise threshold between features in $\mathbf{F}$, $\tau$ is a threshold such that for any two representations, if $|\text{cossim}(\mathbf{r}_1, \mathbf{r}_2)| > \tau$, they are deemed to have a feature in common and are labelled as neighbors.
 Finding the optimal values for these parameters can perhaps be found through empirical exploration or by treating them as hyperparameters.
 
-With $\tau$, for a given representation, we segment our representation dataset $\mathbf{X} \in \mathbb{R}^{d \times n}$ into two subsets: the neighbour representations $\mathbf{X}_{\text{pos}}$ and the non-neighbours $\mathbf{X}_{\text{neg}}$.
+With $\tau$, for a given representation, we segment our representation dataset $\mathbf{X} \in \mathbb{R}^{d \times n}$ into two subsets: the neighbor representations $\mathbf{X}_{\text{pos}}$ and the non-neighbors $\mathbf{X}_{\text{neg}}$.
 To focus on the variance structure, we compute the mean-centered non-neighbor matrix: $\bar{\mathbf{X}}_{\text{neg}} = \mathbf{X}_{\text{neg}} - \boldsymbol{\mu}_{\text{neg}}$, where $\boldsymbol{\mu}_{\text{neg}}$ is the mean of the columns in $\mathbf{X}_{\text{neg}}$.
 
 The idea is that there must be some feature $\mathbf{f}_i$ that unifies all the columns in $\mathbf{X}_{\text{pos}}$ but is absent from $\mathbf{X}_{\text{neg}}$.
@@ -36,3 +36,28 @@ Finally, we project the neighbor data $\mathbf{X}_{\text{pos}}$ onto this $\epsi
 \end{equation}
 
 where $\text{SVD}_1$ outputs the left singular vector corresponding to the largest singular value.
+
+\subsection{Target Selection via Neighborhood Minimality}
+
+The success of extracting a clean feature basis $\mathbf{f}$ depends on the ``purity'' of the target representation $\mathbf{r}$.
+If $\mathbf{r}$ is polysemantic, containing multiple features, such as Feature A and Feature B, its neighbor set $\mathbf{X}_{\text{pos}}$ will be a mixture of representations sharing either A, B, or both.
+Since the cosine similarity threshold $\tau$ only requires the presence of a single shared feature to trigger a neighbor relationship, the resulting neighbor set $\mathbf{X}_{\text{pos}}$ is semantically heterogeneous.
+
+Consequently, projecting such a mixed $\mathbf{X}_{\text{pos}}$ onto the $\epsilon$-nullspace of the non-neighbors yields a projected matrix with a rank corresponding to the number of independent features present.
+In the case of two features, the SVD will produce two significant singular vectors.
+Crucially, because SVD identifies directions of maximal variance within the mixture, these vectors are typically rotations of the original feature directions rather than being aligned with the ground truth features themselves.
+
+To ensure a recoverable, monosemantic feature, we aim for the projected neighbor set to be effectively \emph{rank-1}.
+This requires selecting target representations that contain exactly one feature.
+We identify these monosemantic targets by analyzing the cardinality of neighbor sets.
+The intuition relies on the subset relationship of feature neighborhoods: a representation containing only feature $A$ will have a neighborhood consisting strictly of other representations containing $A$.
+Conversely, a polysemantic neighbor $\mathbf{r}_i$ containing features $\{A, B\}$ will possess a neighborhood that is approximately the union of the neighborhoods of $A$ and $B$.
+
+Formally, we define a target representation $\mathbf{r}$ as a candidate for feature extraction if its neighbor set size is a local minimum relative to its neighbors:
+
+\begin{equation}
+	|\mathbf{X}_{\text{pos}}| \leq |\mathbf{X}_{\text{pos}, i}| \quad \forall \mathbf{r}_i \in \mathbf{X}_{\text{pos}}
+\end{equation}
+
+where $\mathbf{X}_{\text{pos}, i}$ denotes the set of neighbors for the $i$-th representation within $\mathbf{X}_{\text{pos}}$. By selecting for local minimality, we isolate ``atomic'' representations that ensure the residue in the $\epsilon$-nullspace is dominated by a single variance component.
+This rank-1 structure allows $\text{SVD}_1$ to accurately recover the ground-truth feature direction $\mathbf{f}$ without interference from secondary features.

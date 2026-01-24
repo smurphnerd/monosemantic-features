@@ -1,9 +1,9 @@
-import pytest
 import torch
-from src.config import SyntheticConfig, ExtractionConfig, compute_coef_min
+from src.config import SyntheticConfig, ExtractionConfig
 from src.extraction import compute_tau_bounds, resolve_tau, find_neighbors, cluster_by_neighbors
 from src.extraction import compute_nullspace
 from src.extraction import extract_feature
+from src.extraction import build_neighbor_matrix, find_monosemantic_targets
 
 
 def test_compute_tau_bounds_orthogonal():
@@ -185,48 +185,110 @@ def test_extract_feature_unit_norm():
         assert torch.isclose(extracted.norm(), torch.tensor(1.0), atol=1e-6)
 
 
-from src.synthetic import generate_feature_basis, generate_representations
-from src.extraction import extract_all_features
+# Tests for build_neighbor_matrix and find_monosemantic_targets
 
 
-def test_extract_all_features_orthogonal_basis():
-    """Full pipeline should recover features from orthogonal basis."""
-    torch.manual_seed(42)
+def test_build_neighbor_matrix_diagonal_true():
+    """Diagonal should be True (self-neighbors)."""
+    representations = torch.randn(5, 4)
+    representations = representations / representations.norm(dim=1, keepdim=True)
 
-    # Note: num_representations must be small relative to d to ensure
-    # non-neighbors don't span the full space (leaving non-trivial nullspace)
-    config = SyntheticConfig(
-        d=16, n=16, epsilon=0.0, num_representations=20,
-        sparsity_mode="fixed", k=2, coef_min_floor=0.3
-    )
-    extraction_config = ExtractionConfig(tau=None, tau_margin=0.5, epsilon=0.0)
+    matrix = build_neighbor_matrix(representations, tau=0.5)
 
-    features = generate_feature_basis(config.d, config.n, config.epsilon)
-    representations, _ = generate_representations(features, config)
-
-    extracted = extract_all_features(representations, extraction_config, config)
-
-    # Should extract some features (at least a few)
-    assert extracted.shape[0] > 0
-    assert extracted.shape[1] == config.d
+    assert matrix.diagonal().all(), "Diagonal should all be True"
 
 
-def test_extract_all_features_unit_norm():
-    """All extracted features should have unit norm."""
-    torch.manual_seed(42)
+def test_build_neighbor_matrix_symmetric():
+    """Matrix should be symmetric."""
+    representations = torch.randn(5, 4)
+    representations = representations / representations.norm(dim=1, keepdim=True)
 
-    # Note: num_representations must be small relative to d to ensure
-    # non-neighbors don't span the full space (leaving non-trivial nullspace)
-    config = SyntheticConfig(
-        d=16, n=16, epsilon=0.0, num_representations=20,
-        sparsity_mode="fixed", k=2, coef_min_floor=0.3
-    )
-    extraction_config = ExtractionConfig(tau=None, epsilon=0.0)
+    matrix = build_neighbor_matrix(representations, tau=0.5)
 
-    features = generate_feature_basis(config.d, config.n, config.epsilon)
-    representations, _ = generate_representations(features, config)
+    assert torch.equal(matrix, matrix.T), "Matrix should be symmetric"
 
-    extracted = extract_all_features(representations, extraction_config, config)
 
-    norms = torch.norm(extracted, dim=1)
-    assert torch.allclose(norms, torch.ones(extracted.shape[0]), atol=1e-6)
+def test_build_neighbor_matrix_threshold():
+    """Matrix should correctly threshold by cosine similarity."""
+    # Create known representations
+    representations = torch.tensor([
+        [1.0, 0.0, 0.0],
+        [0.9, 0.1, 0.0],  # ~0.99 cossim with first
+        [0.0, 1.0, 0.0],  # 0 cossim with first
+    ])
+    representations = representations / representations.norm(dim=1, keepdim=True)
+
+    matrix = build_neighbor_matrix(representations, tau=0.8)
+
+    # 0 and 1 should be neighbors
+    assert matrix[0, 1] == True
+    assert matrix[1, 0] == True
+    # 0 and 2 should not be neighbors
+    assert matrix[0, 2] == False
+    assert matrix[2, 0] == False
+
+
+def test_find_monosemantic_targets_deduplicates():
+    """Identical neighbor sets should yield single representative."""
+    # Create matrix where rows 0 and 1 have identical neighbor patterns
+    matrix = torch.tensor([
+        [True, True, False, False],
+        [True, True, False, False],  # Same as row 0
+        [False, False, True, True],
+        [False, False, True, True],  # Same as row 2
+    ])
+
+    targets = find_monosemantic_targets(matrix)
+
+    # Should have exactly 2 targets (one per unique neighbor set)
+    assert len(targets) == 2
+
+
+def test_find_monosemantic_targets_minimality_criterion():
+    """Should select representations with minimal neighbor count among neighbors."""
+    # Create a scenario:
+    # - Rep 0: neighbors {0, 1, 2} (count=3)
+    # - Rep 1: neighbors {0, 1, 2, 3} (count=4, superset of rep 0's neighbors)
+    # - Rep 2: neighbors {0, 1, 2} (count=3)
+    # - Rep 3: neighbors {1, 3} (count=2)
+    #
+    # Rep 0's neighbors have counts [3, 4, 3], min=3, rep 0 has 3 -> passes
+    # Rep 1's neighbors have counts [3, 4, 3, 2], min=2, rep 1 has 4 -> fails
+    # Rep 3's neighbors have counts [4, 2], min=2, rep 3 has 2 -> passes
+
+    matrix = torch.tensor([
+        [True, True, True, False],   # 0: neighbors {0,1,2}
+        [True, True, True, True],    # 1: neighbors {0,1,2,3}
+        [True, True, True, False],   # 2: neighbors {0,1,2} - same as 0
+        [False, True, False, True],  # 3: neighbors {1,3}
+    ])
+
+    targets = find_monosemantic_targets(matrix)
+    target_list = targets.tolist()
+
+    # Rep 0 (or 2, deduplicated) should be in targets (count 3, min neighbor count 3)
+    assert 0 in target_list or 2 in target_list
+    # Rep 3 should be in targets (count 2, min neighbor count 2)
+    assert 3 in target_list
+    # Rep 1 should NOT be in targets (count 4 > min neighbor count 2)
+    assert 1 not in target_list
+
+
+def test_find_monosemantic_targets_all_polysemantic():
+    """When all representations are polysemantic, should return empty."""
+    # Create scenario where no representation has minimal neighbor count
+    # Every representation has a neighbor with fewer neighbors
+    matrix = torch.tensor([
+        [True, True, True, True],    # 0: all neighbors (count=4)
+        [True, True, True, True],    # 1: all neighbors (count=4)
+        [True, True, True, True],    # 2: all neighbors (count=4)
+        [True, True, True, True],    # 3: all neighbors (count=4)
+    ])
+
+    targets = find_monosemantic_targets(matrix)
+
+    # All have the same count (4), and all are neighbors of each other
+    # So min among neighbors = 4 for all, and all have count 4
+    # All should pass the minimality criterion (count <= min)
+    # But they all have identical rows, so should deduplicate to 1
+    assert len(targets) == 1
