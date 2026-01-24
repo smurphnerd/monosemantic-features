@@ -28,32 +28,35 @@ def welch_bound(n: int, d: int) -> float:
     return math.sqrt((n - d) / (d * (n - 1)))
 
 
-def generate_feature_basis(d: int, n: int, epsilon: float) -> torch.Tensor:
+def generate_feature_basis(d: int, n: int) -> FeatureBasisResult:
     """
-    Generate n feature vectors in d dimensions that are ε-orthogonal.
+    Generate n unit-norm feature vectors in d dimensions with minimal coherence.
 
     Args:
         d: Dimension of representation space
         n: Number of features
-        epsilon: Orthogonality tolerance (|⟨f_i, f_j⟩| ≤ ε for i≠j)
 
     Returns:
-        (n, d) tensor of unit-norm feature vectors
+        FeatureBasisResult with features and metadata
 
-    For ε=0: Returns orthonormal basis (requires n ≤ d)
-    For ε>0: Not yet implemented
+    For n <= d: Returns orthonormal basis (achieved_epsilon = 0)
+    For n > d: Not yet implemented
     """
-    if epsilon == 0.0:
-        if n > d:
-            raise ValueError(f"For epsilon=0, requires n <= d, got n={n}, d={d}")
-        # QR decomposition produces orthonormal columns, so we create (d, n)
-        # and transpose the result to get (n, d) where rows are feature vectors
+    if n <= d:
+        # QR decomposition produces orthonormal columns
         random_matrix = torch.randn(d, n)
         q, _ = torch.linalg.qr(random_matrix)
-        return q.T  # (n, d) - rows are unit-norm orthogonal feature vectors
+        features = q.T  # (n, d) - rows are unit-norm orthogonal feature vectors
+
+        return FeatureBasisResult(
+            features=features,
+            achieved_epsilon=0.0,
+            welch_bound=0.0,
+            converged=True
+        )
     else:
         raise NotImplementedError(
-            f"epsilon > 0 not yet implemented, got epsilon={epsilon}"
+            f"n > d not yet implemented, got n={n}, d={d}"
         )
 
 

@@ -35,11 +35,11 @@ def run_experiment(config: ExperimentConfig, verbose: bool = False) -> MetricsRe
     torch.manual_seed(config.seed)
 
     # Generate ground truth
-    features = generate_feature_basis(
+    basis_result = generate_feature_basis(
         config.synthetic.d,
-        config.synthetic.n,
-        config.synthetic.epsilon
+        config.synthetic.n
     )
+    features = basis_result.features
 
     representations, coefficients = generate_representations(
         features, config.synthetic

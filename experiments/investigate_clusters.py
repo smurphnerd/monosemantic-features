@@ -44,7 +44,8 @@ def main():
     print(f"tau={ext_config.tau}, neg_tau={ext_config.neg_tau}")
     print()
 
-    features = generate_feature_basis(syn_config.d, syn_config.n, syn_config.epsilon)
+    basis_result = generate_feature_basis(syn_config.d, syn_config.n)
+    features = basis_result.features
     representations, coefficients = generate_representations(features, syn_config)
 
     repr_features = [
