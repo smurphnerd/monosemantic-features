@@ -7,7 +7,7 @@ class SyntheticConfig:
     """Configuration for synthetic data generation."""
     d: int = 64                          # Representation dimension
     n: int = 64                          # Number of features in basis
-    epsilon: float = 0.0                 # Orthogonality tolerance (0 = orthogonal)
+    # epsilon removed - now derived from generate_feature_basis
     num_representations: int = 1000      # How many to generate
 
     # Sparsity settings
@@ -24,9 +24,9 @@ class SyntheticConfig:
     positive_only: bool = False          # If True, coefficients are always positive
 
 
-def compute_coef_min(config: SyntheticConfig) -> float:
+def compute_coef_min(config: SyntheticConfig, epsilon: float = 0.0) -> float:
     """Compute minimum coefficient magnitude: max(factor * k * epsilon, floor)."""
-    return max(config.coef_factor * config.k * config.epsilon, config.coef_min_floor)
+    return max(config.coef_factor * config.k * epsilon, config.coef_min_floor)
 
 
 @dataclass

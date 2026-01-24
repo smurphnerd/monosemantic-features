@@ -27,7 +27,7 @@ from src.synthetic import generate_representations
 
 
 def test_generate_representations_shape():
-    config = SyntheticConfig(d=64, n=64, epsilon=0.0, num_representations=100, k=3)
+    config = SyntheticConfig(d=64, n=64, num_representations=100, k=3)
     result = generate_feature_basis(config.d, config.n)
     representations, coefficients = generate_representations(result.features, config)
 
@@ -37,7 +37,7 @@ def test_generate_representations_shape():
 
 def test_generate_representations_fixed_sparsity():
     config = SyntheticConfig(
-        d=64, n=64, epsilon=0.0, num_representations=100,
+        d=64, n=64, num_representations=100,
         sparsity_mode="fixed", k=3
     )
     result = generate_feature_basis(config.d, config.n)
@@ -50,7 +50,7 @@ def test_generate_representations_fixed_sparsity():
 
 def test_generate_representations_coefficient_bounds():
     config = SyntheticConfig(
-        d=64, n=64, epsilon=0.0, num_representations=100,
+        d=64, n=64, num_representations=100,
         k=3, coef_min_floor=0.1, coef_max=1.0
     )
     result = generate_feature_basis(config.d, config.n)
@@ -64,7 +64,7 @@ def test_generate_representations_coefficient_bounds():
 
 
 def test_generate_representations_reconstruction():
-    config = SyntheticConfig(d=64, n=64, epsilon=0.0, num_representations=100, k=3)
+    config = SyntheticConfig(d=64, n=64, num_representations=100, k=3)
     result = generate_feature_basis(config.d, config.n)
     representations, coefficients = generate_representations(result.features, config)
 

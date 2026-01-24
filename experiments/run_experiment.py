@@ -48,7 +48,8 @@ def run_experiment(config: ExperimentConfig, verbose: bool = False) -> MetricsRe
     # Run extraction
     extracted = extract_all_features(
         representations, config.extraction, config.synthetic, verbose=verbose,
-        use_minimality_filter=config.extraction.use_minimality_filter
+        use_minimality_filter=config.extraction.use_minimality_filter,
+        basis_epsilon=basis_result.achieved_epsilon
     )
 
     # Evaluate
@@ -63,7 +64,7 @@ def run_experiment(config: ExperimentConfig, verbose: bool = False) -> MetricsRe
     return result
 
 
-def save_results(result: MetricsResult, config: ExperimentConfig, path: Path) -> None:
+def save_results(result: MetricsResult, config: ExperimentConfig, path: Path, basis_epsilon: float = 0.0) -> None:
     """Save experiment results to JSON."""
     data = {
         "timestamp": datetime.now().isoformat(),
@@ -71,7 +72,6 @@ def save_results(result: MetricsResult, config: ExperimentConfig, path: Path) ->
             "synthetic": {
                 "d": config.synthetic.d,
                 "n": config.synthetic.n,
-                "epsilon": config.synthetic.epsilon,
                 "num_representations": config.synthetic.num_representations,
                 "sparsity_mode": config.synthetic.sparsity_mode,
                 "k": config.synthetic.k,
@@ -80,6 +80,7 @@ def save_results(result: MetricsResult, config: ExperimentConfig, path: Path) ->
                 "tau": config.extraction.tau,
                 "epsilon": config.extraction.epsilon,
             },
+            "basis_epsilon": basis_epsilon,
             "seed": config.seed,
         },
         "results": {
@@ -104,12 +105,12 @@ def main():
     parser = argparse.ArgumentParser(description="Run monosemantic feature extraction experiment")
     parser.add_argument("--d", type=int, default=64, help="Representation dimension")
     parser.add_argument("--n", type=int, default=64, help="Number of features")
-    parser.add_argument("--epsilon", type=float, default=0.0, help="Orthogonality tolerance")
     parser.add_argument("--num-repr", type=int, default=1000, help="Number of representations")
     parser.add_argument("--k", type=int, default=3, help="Sparsity (active features)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--output", type=str, default=None, help="Output path for results JSON")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
+    parser.add_argument("--extraction-epsilon", type=float, default=0.0, help="Nullspace epsilon threshold")
 
     args = parser.parse_args()
 
@@ -117,15 +118,14 @@ def main():
         synthetic=SyntheticConfig(
             d=args.d,
             n=args.n,
-            epsilon=args.epsilon,
             num_representations=args.num_repr,
             k=args.k,
         ),
-        extraction=ExtractionConfig(tau=None, epsilon=args.epsilon),
+        extraction=ExtractionConfig(tau=None, epsilon=args.extraction_epsilon),
         seed=args.seed,
     )
 
-    print(f"Running experiment: d={args.d}, n={args.n}, epsilon={args.epsilon}, k={args.k}")
+    print(f"Running experiment: d={args.d}, n={args.n}, k={args.k}")
     result = run_experiment(config, verbose=args.verbose)
 
     print(f"\nResults:")

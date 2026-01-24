@@ -33,8 +33,6 @@ def log_experiment_config(config: ExperimentConfig) -> None:
     lines.append(f"    sparsity_mode={syn.sparsity_mode}, k={syn.k}", )
     if syn.sparsity_mode == "variable" and syn.k_min is not None:
         lines.append(f"    k_min={syn.k_min}")
-    if syn.epsilon > 0:
-        lines.append(f"    epsilon={syn.epsilon}")
     lines.append(f"    coef_max={syn.coef_max}, coef_min_floor={syn.coef_min_floor}")
 
     # Extraction config - conditionally include fields

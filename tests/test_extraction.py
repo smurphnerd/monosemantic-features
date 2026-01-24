@@ -21,10 +21,10 @@ def test_compute_tau_bounds_orthogonal():
 
 def test_resolve_tau_auto():
     """When tau is None, it should be auto-derived."""
-    synthetic = SyntheticConfig(epsilon=0.0, k=3, coef_min_floor=0.1)
+    synthetic = SyntheticConfig(k=3, coef_min_floor=0.1)
     extraction = ExtractionConfig(tau=None, tau_margin=0.5)
 
-    tau = resolve_tau(extraction, synthetic)
+    tau = resolve_tau(extraction, synthetic, epsilon=0.0)
 
     assert tau > 0
     assert tau < 1
@@ -32,10 +32,10 @@ def test_resolve_tau_auto():
 
 def test_resolve_tau_manual():
     """When tau is set, it should be used directly."""
-    synthetic = SyntheticConfig(epsilon=0.0, k=3)
+    synthetic = SyntheticConfig(k=3)
     extraction = ExtractionConfig(tau=0.7)
 
-    tau = resolve_tau(extraction, synthetic)
+    tau = resolve_tau(extraction, synthetic, epsilon=0.0)
 
     assert tau == 0.7
 

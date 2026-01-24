@@ -111,7 +111,7 @@ def compute_tau_bounds(
 
 
 def resolve_tau(
-    extraction_config: ExtractionConfig, synthetic_config: SyntheticConfig
+    extraction_config: ExtractionConfig, synthetic_config: SyntheticConfig, epsilon: float = 0.0
 ) -> float:
     """
     Resolve the τ threshold: auto-derive if None, otherwise use manual value.
@@ -119,6 +119,7 @@ def resolve_tau(
     Args:
         extraction_config: ExtractionConfig with tau and tau_margin
         synthetic_config: SyntheticConfig for deriving bounds
+        epsilon: Orthogonality tolerance from feature basis generation
 
     Returns:
         Resolved τ value
@@ -126,10 +127,10 @@ def resolve_tau(
     if extraction_config.tau is not None:
         return extraction_config.tau
 
-    coef_min = compute_coef_min(synthetic_config)
+    coef_min = compute_coef_min(synthetic_config, epsilon)
     tau_upper, tau_lower = compute_tau_bounds(
         k=synthetic_config.k,
-        epsilon=synthetic_config.epsilon,
+        epsilon=epsilon,
         coef_min=coef_min,
         coef_max=synthetic_config.coef_max,
     )
@@ -388,6 +389,7 @@ def extract_all_features(
     synthetic_config: SyntheticConfig,
     verbose: bool = False,
     use_minimality_filter: bool = True,
+    basis_epsilon: float = 0.0,
 ) -> torch.Tensor:
     """
     Extract all monosemantic features from representations.
@@ -411,11 +413,13 @@ def extract_all_features(
         verbose: If True, log extraction details
         use_minimality_filter: If True, only extract from monosemantic targets
             (representations whose neighbor count is a local minimum)
+        basis_epsilon: Orthogonality tolerance from feature basis generation
+            (used for auto-deriving tau threshold)
 
     Returns:
         (m, d) tensor of extracted features - rows are unit-norm feature vectors
     """
-    tau = resolve_tau(extraction_config, synthetic_config)
+    tau = resolve_tau(extraction_config, synthetic_config, basis_epsilon)
     epsilon = extraction_config.epsilon
     max_neighbors = extraction_config.max_neighbors
     neg_tau = extraction_config.neg_tau
