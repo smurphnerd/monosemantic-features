@@ -135,7 +135,9 @@ def generate_feature_basis(d: int, n: int) -> FeatureBasisResult:
 
 
 def generate_representations(
-    features: torch.Tensor, config: SyntheticConfig
+    features: torch.Tensor,
+    config: SyntheticConfig,
+    epsilon: float = 0.0,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Generate representations as sparse linear combinations of features.
@@ -143,6 +145,7 @@ def generate_representations(
     Args:
         features: (n, d) tensor of feature vectors
         config: SyntheticConfig with sparsity and coefficient settings
+        epsilon: Feature orthogonality tolerance (for coefficient scaling)
 
     Returns:
         representations: (num_representations, d)
@@ -150,7 +153,7 @@ def generate_representations(
     """
     n, _ = features.shape
     num_repr = config.num_representations
-    coef_min = compute_coef_min(config)
+    coef_min = compute_coef_min(config, epsilon)
     coef_max = config.coef_max
 
     # Initialize coefficients as zeros
