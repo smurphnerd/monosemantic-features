@@ -101,3 +101,22 @@ def test_welch_bound_formula():
     n, d = 20, 10
     expected = math.sqrt((n - d) / (d * (n - 1)))
     assert abs(welch_bound(n, d) - expected) < 1e-10
+
+
+def test_feature_basis_result_dataclass():
+    """FeatureBasisResult holds features and metadata."""
+    import torch
+    from src.synthetic import FeatureBasisResult
+
+    features = torch.randn(5, 3)
+    result = FeatureBasisResult(
+        features=features,
+        achieved_epsilon=0.1,
+        welch_bound=0.05,
+        converged=True
+    )
+
+    assert result.features.shape == (5, 3)
+    assert result.achieved_epsilon == 0.1
+    assert result.welch_bound == 0.05
+    assert result.converged is True

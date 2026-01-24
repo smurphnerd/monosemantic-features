@@ -1,8 +1,18 @@
 import math
+from dataclasses import dataclass
 
 import torch
 
 from src.config import SyntheticConfig, compute_coef_min
+
+
+@dataclass
+class FeatureBasisResult:
+    """Result of feature basis generation."""
+    features: torch.Tensor      # (n, d) unit-norm feature vectors
+    achieved_epsilon: float     # max |<f_i, f_j>| across all pairs
+    welch_bound: float          # theoretical minimum for this n, d
+    converged: bool             # True if iterative method stabilized
 
 
 def welch_bound(n: int, d: int) -> float:
