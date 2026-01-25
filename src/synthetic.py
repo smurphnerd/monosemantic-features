@@ -232,6 +232,10 @@ def generate_representations(
             active_mask = torch.rand(n) < theta
             active_indices = torch.where(active_mask)[0]
 
+            # Ensure at least one feature is active
+            if len(active_indices) == 0:
+                active_indices = torch.randint(0, n, (1,))
+
             if len(active_indices) > 0:
                 # Gaussian with variance 1/theta
                 std = (1.0 / theta) ** 0.5
