@@ -2,8 +2,14 @@
 \label{sec:methodology}
 
 My idea for finding the feature basis $\mathbf{F}$ requires defining two parameters $\tau$ and $\epsilon$.
-While $\epsilon$ represents the same noise threshold between features in $\mathbf{F}$, $\tau$ is a threshold such that for any two representations, if $|\text{cossim}(\mathbf{r}_1, \mathbf{r}_2)| > \tau$, they are deemed to have a feature in common and are labelled as neighbors.
-Finding the optimal values for these parameters can perhaps be found through empirical exploration or by treating them as hyperparameters.
+While $\epsilon$ represents the same noise threshold between features in $\mathbf{F}$, $\tau$ is a threshold such that for any two representations, if $|\mathbf{r}_1 \cdot \mathbf{r}_2| > \tau$, they are deemed to have a feature in common and are labelled as neighbors.
+We use the absolute dot product rather than cosine similarity because the latter normalizes out magnitude information: small-coefficient monosemantic representations have their shared-feature signal attenuated relative to $\epsilon$-interference noise after normalization, making them indistinguishable from non-sharing pairs.
+With dot product, the shared feature contribution scales as $c_i c_j$ while interference scales as $\epsilon \cdot c_i c_j$, preserving the signal-to-noise ratio regardless of coefficient magnitude.
+
+When the generative parameters are known, $\tau$ can be derived analytically.
+The minimum dot product between representations sharing a feature is $c_{\min}^2$ (from the shared feature's coefficient product), while the maximum dot product between non-sharing representations is bounded by $k^2 c_{\max}^2 \epsilon$ (from $k \times k$ cross-feature interference terms).
+Separation is guaranteed when $c_{\min}^2 > k^2 c_{\max}^2 \epsilon$, and the optimal $\tau$ lies between these bounds.
+When the generative parameters are unknown, they can be treated as hyperparameters in a sweep.
 
 With $\tau$, for a given representation, we segment our representation dataset $\mathbf{X} \in \mathbb{R}^{d \times n}$ into two subsets: the neighbor representations $\mathbf{X}_{\text{pos}}$ and the non-neighbors $\mathbf{X}_{\text{neg}}$.
 To focus on the variance structure, we compute the mean-centered non-neighbor matrix: $\bar{\mathbf{X}}_{\text{neg}} = \mathbf{X}_{\text{neg}} - \boldsymbol{\mu}_{\text{neg}}$, where $\boldsymbol{\mu}_{\text{neg}}$ is the mean of the columns in $\mathbf{X}_{\text{neg}}$.
@@ -41,7 +47,7 @@ where $\text{SVD}_1$ outputs the left singular vector corresponding to the large
 
 The success of extracting a clean feature basis $\mathbf{f}$ depends on the ``purity'' of the target representation $\mathbf{r}$.
 If $\mathbf{r}$ is polysemantic, containing multiple features, such as Feature A and Feature B, its neighbor set $\mathbf{X}_{\text{pos}}$ will be a mixture of representations sharing either A, B, or both.
-Since the cosine similarity threshold $\tau$ only requires the presence of a single shared feature to trigger a neighbor relationship, the resulting neighbor set $\mathbf{X}_{\text{pos}}$ is semantically heterogeneous.
+Since the dot product threshold $\tau$ only requires the presence of a single shared feature to trigger a neighbor relationship, the resulting neighbor set $\mathbf{X}_{\text{pos}}$ is semantically heterogeneous.
 
 Consequently, projecting such a mixed $\mathbf{X}_{\text{pos}}$ onto the $\epsilon$-nullspace of the non-neighbors yields a projected matrix with a rank corresponding to the number of independent features present.
 In the case of two features, the SVD will produce two significant singular vectors.

@@ -8,6 +8,8 @@ Implement the neighborhood minimality criterion from `writeup/sec/3_method.tex` 
 
 **Solution:** Select targets whose neighbor set cardinality is a local minimum relative to their neighbors. These are likely monosemantic (single-feature) and yield rank-1 projections for clean feature extraction.
 
+**Similarity metric:** Absolute dot product (not cosine similarity). Cosine similarity normalizes out magnitude information that is critical for distinguishing small-coefficient monosemantic representations from ε-interference noise. With dot product, shared feature contributions scale as coef_min² while non-sharing interference scales as k²·coef_max²·ε, giving clean separation when generator parameters allow it.
+
 **Criterion:** A representation r is a valid target if:
 ```
 |X_pos| <= |X_pos,i| for all neighbors r_i in X_pos
@@ -19,27 +21,25 @@ Implement the neighborhood minimality criterion from `writeup/sec/3_method.tex` 
 
 Location: `src/extraction.py`
 
+> **Note (2026-01-25):** Switched from cosine similarity to dot product. Cosine similarity normalizes out magnitude, making it impossible for small-coefficient monosemantic representations to maintain their signal above ε-interference noise. With dot product, magnitude is preserved and the shared feature contribution scales naturally with coefficients.
+
 **Input:**
 - `X`: representations matrix (n x d), row-major
-- `tau`: cosine similarity threshold
+- `tau`: dot product threshold
 
 **Output:**
-- Boolean adjacency matrix (n x n) where `matrix[i,j] = |cossim(X[i], X[j])| >= tau`
+- Boolean adjacency matrix (n x n) where `matrix[i,j] = |dot(X[i], X[j])| >= tau`
 - Diagonal is True (self-neighbors)
 - Matrix is symmetric
 
 **Implementation:**
 ```python
 def build_neighbor_matrix(X: np.ndarray, tau: float) -> np.ndarray:
-    # Normalize rows
-    norms = np.linalg.norm(X, axis=1, keepdims=True)
-    X_norm = X / norms
-
-    # Pairwise cosine similarities
-    cossim = X_norm @ X_norm.T
+    # Pairwise dot products
+    dots = X @ X.T
 
     # Threshold with absolute value
-    neighbor_matrix = np.abs(cossim) >= tau
+    neighbor_matrix = np.abs(dots) >= tau
 
     return neighbor_matrix
 ```
@@ -180,7 +180,7 @@ neighbor_matrix (n x n bool)
 **`test_build_neighbor_matrix`**
 - Verify diagonal is True
 - Verify symmetry (matrix[i,j] == matrix[j,i])
-- Verify threshold behavior with known pairs above/below tau
+- Verify threshold behavior with known pairs above/below tau (using dot product)
 
 **`test_find_monosemantic_targets`**
 - Hand-crafted small graph where minimality is clear

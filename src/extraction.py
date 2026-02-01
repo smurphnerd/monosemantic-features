@@ -13,23 +13,22 @@ def build_neighbor_matrix(representations: torch.Tensor, tau: float) -> torch.Te
     """
     Build boolean adjacency matrix for neighbor relationships.
 
+    Uses absolute dot product (not cosine similarity) to preserve magnitude
+    information critical for small-coefficient monosemantic representations.
+
     Args:
         representations: (num_repr, d) tensor - rows are representation vectors
-        tau: Cosine similarity threshold (applied to absolute value)
+        tau: Dot product threshold (applied to absolute value)
 
     Returns:
-        (num_repr, num_repr) boolean tensor where matrix[i,j] = |cossim(i,j)| >= tau
+        (num_repr, num_repr) boolean tensor where matrix[i,j] = |dot(i,j)| >= tau
         Diagonal is True (self-neighbors). Matrix is symmetric.
     """
-    # Normalize rows
-    norms = torch.norm(representations, dim=1, keepdim=True)
-    X_norm = representations / (norms + 1e-8)
-
-    # Pairwise cosine similarities
-    cossim = X_norm @ X_norm.T
+    # Pairwise dot products
+    dots = representations @ representations.T
 
     # Threshold with absolute value
-    neighbor_matrix = torch.abs(cossim) >= tau
+    neighbor_matrix = torch.abs(dots) >= tau
 
     return neighbor_matrix
 
@@ -83,7 +82,11 @@ def compute_tau_bounds(
     k: int, epsilon: float, coef_min: float, coef_max: float
 ) -> tuple[float, float]:
     """
-    Compute valid τ range based on generative parameters.
+    Compute valid τ range based on generative parameters (dot product metric).
+
+    With dot product (not cosine similarity), magnitude is preserved:
+    - Sharing pairs: dot product ≥ coef_min² (shared feature's coefficient product)
+    - Non-sharing pairs: dot product ≤ k² × coef_max² × ε (all k×k pairs contribute ≤ coef_max² × ε)
 
     Args:
         k: Maximum number of active features per representation
@@ -92,24 +95,22 @@ def compute_tau_bounds(
         coef_max: Maximum coefficient magnitude
 
     Returns:
-        tau_upper: Upper bound on τ (min similarity when sharing a feature)
-        tau_lower: Lower bound on τ (max similarity when NOT sharing)
+        tau_upper: Upper bound on τ (min dot product when sharing a feature)
+        tau_lower: Lower bound on τ (max dot product when NOT sharing)
 
     For τ to separate sharing from non-sharing, we need tau_lower < τ < tau_upper.
+    Separable when coef_min² > k² × coef_max² × ε.
     """
-    # Max norm per representation: sqrt(k * coef_max^2)
-    max_norm_sq = k * coef_max**2
+    # tau_upper: minimum absolute dot product when SHARING a feature
+    # Worst case: both representations have minimum coefficient on shared feature
+    # Shared contribution: coef_min × coef_min = coef_min²
+    # (Interference from other features adds positively in expectation)
+    tau_upper = coef_min * coef_min
 
-    # tau_upper: minimum similarity when SHARING a feature
-    # Worst case: minimum coefficients on shared feature, maximum norms
-    # cossim = (c1 * c2) / (||r1|| * ||r2||) ≥ coef_min^2 / max_norm^2
-    tau_upper = coef_min * coef_min / max_norm_sq
-
-    # tau_lower: maximum similarity when NOT sharing any feature
-    # Only ε-interference between k features in each representation
-    # Max dot product: k * k * coef_max^2 * ε (all pairs ε-correlated)
+    # tau_lower: maximum absolute dot product when NOT sharing any feature
+    # All k×k feature pairs contribute at most coef_max² × ε each
     # For ε=0: tau_lower = 0 (orthogonal features have zero interference)
-    tau_lower = k * k * coef_max * coef_max * epsilon / max_norm_sq
+    tau_lower = k * k * coef_max * coef_max * epsilon
 
     return tau_upper, tau_lower
 
@@ -155,41 +156,36 @@ def find_neighbors(
     max_neighbors: int | None = None,
 ) -> torch.Tensor:
     """
-    Find indices of representations with |cosine similarity| >= tau to target.
+    Find indices of representations with |dot product| >= tau to target.
 
-    Uses absolute cosine similarity to catch both aligned and anti-aligned
+    Uses absolute dot product to catch both aligned and anti-aligned
     representations that share a feature (regardless of coefficient sign).
+    Dot product preserves magnitude information critical for small-coefficient
+    monosemantic representations.
 
     Args:
         representations: (num_repr, d) tensor - rows are representation vectors
         target_idx: Index of target representation
-        tau: Cosine similarity threshold (applied to absolute value)
-        norms: Precomputed norms (num_repr,) tensor, or None to compute
-        max_neighbors: If set, limit to top n neighbors by cosine similarity
+        tau: Dot product threshold (applied to absolute value)
+        norms: Precomputed norms (num_repr,) tensor, or None to compute (unused, kept for API compat)
+        max_neighbors: If set, limit to top n neighbors by absolute dot product
 
     Returns:
         1D tensor of neighbor indices (always includes target_idx)
     """
     target = representations[target_idx]
 
-    # Use precomputed norms if provided
-    if norms is None:
-        norms = torch.norm(representations, dim=1)
-    assert norms is not None
-    target_norm = norms[target_idx]
-
     dots = representations @ target
-    cosine_sims = dots / (norms * target_norm + 1e-8)
 
-    # Find neighbors using absolute cosine similarity
+    # Find neighbors using absolute dot product
     # This catches both aligned (+) and anti-aligned (-) representations
-    neighbor_mask = torch.abs(cosine_sims) >= tau
+    neighbor_mask = torch.abs(dots) >= tau
     neighbor_indices = torch.where(neighbor_mask)[0]
 
-    # Limit to top n neighbors by cosine similarity if max_neighbors is set
+    # Limit to top n neighbors by absolute dot product if max_neighbors is set
     if max_neighbors is not None and len(neighbor_indices) > max_neighbors:
-        neighbor_sims = cosine_sims[neighbor_indices]
-        _, top_indices = torch.topk(neighbor_sims, max_neighbors)
+        neighbor_abs_dots = torch.abs(dots[neighbor_indices])
+        _, top_indices = torch.topk(neighbor_abs_dots, max_neighbors)
         neighbor_indices = neighbor_indices[top_indices]
 
     return neighbor_indices
@@ -217,12 +213,9 @@ def cluster_by_neighbors(
     num_repr = representations.shape[0]
     clusters: dict[frozenset[int], list[int]] = {}
 
-    # Precompute norms once for all representations
-    norms = torch.norm(representations, dim=1)
-
     for i in range(num_repr):
         neighbor_indices = find_neighbors(
-            representations, i, tau, norms=norms, max_neighbors=max_neighbors
+            representations, i, tau, max_neighbors=max_neighbors
         )
         neighbor_set = frozenset(neighbor_indices.tolist())
 

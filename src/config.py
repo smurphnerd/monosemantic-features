@@ -32,7 +32,7 @@ def compute_coef_min(config: SyntheticConfig, epsilon: float = 0.0) -> float:
 @dataclass
 class ExtractionConfig:
     """Configuration for feature extraction algorithm."""
-    tau: float | None = None             # Cosine similarity threshold (None = auto-derive)
+    tau: float | None = None             # Dot product threshold (None = auto-derive)
     tau_margin: float = 0.5              # Where between bounds: 0=tau_lower, 1=tau_upper
     epsilon: float = 0.0                 # Noise threshold for nullspace
     max_neighbors: int | None = None     # Max size for neighbor sets (None = unlimited)
