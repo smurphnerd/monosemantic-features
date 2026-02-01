@@ -24,3 +24,4 @@ results/
 
 # Worktrees
 .worktrees/
+**/.ipynb_checkpoints/

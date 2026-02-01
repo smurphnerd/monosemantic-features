@@ -67,6 +67,10 @@ def find_monosemantic_targets(neighbor_matrix: torch.Tensor) -> torch.Tensor:
     targets: list[int] = []
     for i in representatives:
         neighbors = neighbor_matrix[i]
+        if not neighbors.any():
+            # No neighbors - vacuously satisfies minimality criterion
+            targets.append(i)
+            continue
         neighbor_count_values = neighbor_counts[neighbors]
         min_neighbor_count = neighbor_count_values.min()
         if neighbor_counts[i] <= min_neighbor_count:
